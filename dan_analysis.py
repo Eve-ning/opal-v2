@@ -1,5 +1,7 @@
 import pandas as pd
-from torch.nn.functional import hardsigmoid
+import torch
+from sklearn.preprocessing import LabelEncoder, QuantileTransformer
+from torch import nn, sigmoid
 from torch.utils.data import TensorDataset, DataLoader, random_split
 
 from utils import db_conn
@@ -15,12 +17,12 @@ df = pd.read_sql(
         "%LN Dan Phase%",
     ),
 )
+conn.dispose()
+# %%
 # df = pd.read_sql(
 #     r"SELECT * FROM osu_dataset WHERE `keys` = 7",
 #     conn,
 # )
-
-conn.dispose()
 # %%
 # Only keep users and maps who have more than 100 records
 df = df.groupby("username").filter(lambda x: len(x) > 3)
@@ -58,7 +60,6 @@ mid = df["dan"] + "/" + df["speed"].astype(str)
 acc = df["accuracy"]
 ln_ratio = df["ln_ratio"]
 # %%
-from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 
 uid_le = LabelEncoder()
 mid_le = LabelEncoder()
@@ -70,22 +71,43 @@ acc_tf = acc_qt.fit_transform(acc.to_numpy().reshape(-1, 1)).reshape(-1)
 
 n_uid = len(uid_le.classes_)
 n_mid = len(mid_le.classes_)
+
 # %%
-import torch
-from torch import nn, sigmoid
+
+import torch.nn.functional as F
+
+
+class ExpLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__(in_features, out_features, bias)
+
+    def forward(self, x):
+        return F.linear(x, torch.exp(self.weight), self.bias)
 
 
 class Model(nn.Module):
-    def __init__(self, emb=1):
+    def __init__(
+        self,
+        rc_emb: int = 1,
+        ln_emb: int = 1,
+        rc_delta_emb: int = 3,
+        ln_delta_emb: int = 3,
+    ):
         super().__init__()
-        self.uid_emb_rc = nn.Embedding(n_uid, emb)
-        self.mid_emb_rc = nn.Embedding(n_mid, emb)
-        self.uid_emb_ln = nn.Embedding(n_uid, emb)
-        self.mid_emb_ln = nn.Embedding(n_mid, emb)
-        self.w_rc = nn.Parameter(torch.randn(emb))
-        self.b_rc = nn.Parameter(torch.randn(1))
-        self.w_ln = nn.Parameter(torch.randn(emb))
-        self.b_ln = nn.Parameter(torch.randn(1))
+        self.uid_emb_rc = nn.Embedding(n_uid, rc_emb)
+        self.mid_emb_rc = nn.Embedding(n_mid, rc_emb)
+        self.uid_emb_ln = nn.Embedding(n_uid, ln_emb)
+        self.mid_emb_ln = nn.Embedding(n_mid, ln_emb)
+        self.delta_rc_to_acc = nn.Sequential(
+            ExpLinear(rc_emb, rc_delta_emb),
+            nn.ReLU(),
+            ExpLinear(rc_delta_emb, 1),
+        )
+        self.delta_ln_to_acc = nn.Sequential(
+            ExpLinear(ln_emb, ln_delta_emb),
+            nn.ReLU(),
+            ExpLinear(ln_delta_emb, 1),
+        )
         self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x_uid, x_mid, ln_ratio):
@@ -95,9 +117,9 @@ class Model(nn.Module):
         x_mid_emb_ln = self.mid_emb_ln(x_mid)
         x_rc_delta = (x_uid_emb_rc - x_mid_emb_rc) / 2
         x_ln_delta = (x_uid_emb_ln - x_mid_emb_ln) / 2
-        x_rc = x_rc_delta @ self.softmax(self.w_rc).T + self.b_rc
-        x_ln = x_ln_delta @ self.softmax(self.w_ln).T + self.b_ln
-        y = sigmoid(x_rc) * ln_ratio + sigmoid(x_ln) * (1 - ln_ratio)
+        x_rc_acc = sigmoid(self.delta_rc_to_acc(x_rc_delta))
+        x_ln_acc = sigmoid(self.delta_ln_to_acc(x_ln_delta))
+        y = x_rc_acc.squeeze() * (1 - ln_ratio) + x_ln_acc.squeeze() * ln_ratio
         return y
 
 
@@ -125,13 +147,16 @@ loss_fn = nn.MSELoss()
 
 for epoch in range(epochs):
     print(f"Epoch: {epoch}", end=" ")
+    train_losses = []
+    test_losses = []
     for x_uid, x_mid, x_ln_ratio, y in train_dl:
         y_pred = m(x_uid, x_mid, x_ln_ratio)
         loss = loss_fn(y_pred, y)
         loss.backward()
         optim.step()
         optim.zero_grad()
-    print(f"RMSE: {loss.item() ** 0.5:.2%}", end=" ")
+        train_losses.append(loss.item())
+    print(f"RMSE: {torch.tensor(train_losses).mean().item() ** 0.5:.2%}", end=" ")
     with torch.no_grad():
         for x_uid, x_mid, x_ln_ratio, y in test_dl:
             y_pred = m(x_uid, x_mid, x_ln_ratio)
@@ -139,7 +164,8 @@ for epoch in range(epochs):
                 torch.tensor(acc_qt.inverse_transform(y_pred.cpu().reshape(-1, 1))),
                 torch.tensor(acc_qt.inverse_transform(y.cpu().reshape(-1, 1))),
             )
-    print(f"Test RMSE: {loss.item() ** 0.5:.2%}")
+            test_losses.append(loss.item())
+    print(f"Test RMSE: {torch.tensor(test_losses).mean().item() ** 0.5:.2%}")
 # %%
 w_uid_emb_rc = m.uid_emb_rc.weight.detach().numpy().squeeze()
 w_uid_emb_ln = m.uid_emb_ln.weight.detach().numpy().squeeze()
@@ -171,7 +197,6 @@ fig.show()
 # %%
 
 fig = px.scatter(
-    # df_uid[(df_uid.emb1**2 + df_uid.emb2**2) > 5],
     df_uid,
     x="emb1",
     y="emb2",
