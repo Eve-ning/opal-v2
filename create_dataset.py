@@ -20,6 +20,7 @@ def read_maps(conn):
     )[
         [
             "beatmap_id",
+            "ln_ratio",
             "mapname",
             "diff_size",
             "diff_overall",
