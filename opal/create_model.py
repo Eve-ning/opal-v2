@@ -2,7 +2,7 @@ import lightning as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
 from prefect import flow, task
 
-from opal.data import df_dan, OsuDataModule
+from opal.data import OsuDataModule, df_k
 from opal.model.delta_model import DeltaModel
 
 
@@ -13,7 +13,7 @@ def train(trainer: pl.Trainer, dm: OsuDataModule, m: DeltaModel):
 
 @flow(name="Create Opal Model")
 def create_model():
-    dm = OsuDataModule(df=df_dan(), min_map_plays=1, min_user_plays=1)
+    dm = OsuDataModule(df=df_k(7), min_map_plays=50, min_user_plays=50)
 
     m = DeltaModel(
         uid_le=dm.uid_le,
@@ -27,9 +27,9 @@ def create_model():
     )
 
     trainer = pl.Trainer(
-        max_epochs=100,
-        accelerator="gpu",
-        default_root_dir="dan_checkpoints",
+        max_epochs=15,
+        accelerator="cpu",
+        default_root_dir="checkpoints",
         callbacks=[
             ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min")
         ],
