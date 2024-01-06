@@ -6,10 +6,10 @@ from lightning.pytorch.utilities.types import STEP_OUTPUT
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import nn
 
-from model.exp_linear import ExpLinear
+from opal.model.exp_linear import ExpLinear
 
 
-class Model(pl.LightningModule):
+class DeltaModel(pl.LightningModule):
     def __init__(
         self,
         uid_le: LabelEncoder,
