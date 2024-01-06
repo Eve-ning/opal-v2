@@ -27,7 +27,7 @@ def create_model():
     )
 
     trainer = pl.Trainer(
-        max_epochs=1,
+        max_epochs=100,
         accelerator="gpu",
         default_root_dir="dan_checkpoints",
         callbacks=[

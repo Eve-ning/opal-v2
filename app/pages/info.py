@@ -12,11 +12,11 @@ and the further right a player is, the better they are.
 )
 st.code(
     """
-┌────┐  ┌────┐  ┌────┐
-│ M1 ├──┤ M2 ├──┤ P1 │
-└────┘  └────┘  └────┘
-       ◄──────  ──────►
-   Lower Skill  Higher Skill
+. ┌────┐  ┌────┐  ┌────┐
+──┤ M1 ├──┤ M2 ├──┤ P1 ├──►
+  └────┘  └────┘  └────┘
+    ◄────── ──────►
+Lower Skill Higher Skill
     """,
     language="text",
 )
@@ -24,8 +24,8 @@ st.code(
 
 st.write(
     """
-Then the distance between a map and a player is related to the 
-score of the player on the map.
+Then the distance between a map and player is related to the 
+score.
     """
 )
 st.warning(
@@ -34,36 +34,36 @@ st.warning(
 
 st.code(
     """
-P1 - M1 = Higher Score
- ◄──────────────────►
-┌────┐  ┌────┐  ┌────┐
-│ M1 ├──┤ M2 ├──┤ P1 │
-└────┘  └────┘  └────┘
-         ◄──────────►
-      P1 - M2 = Lower Score
+. P1 - M1 = Higher Score
+   ◄──────────────────►
+  ┌────┐  ┌────┐  ┌────┐
+──┤ M1 ├──┤ M2 ├──┤ P1 ├──►
+  └────┘  └────┘  └────┘
+           ◄──────────►
+        P1 - M2 = Lower Score
 """,
     language="text",
 )
 
 st.write(
     """
-I believe it's intuitive that larger distances indicate a larger skill gap,
-therefore, larger gaps equate to higher scores.   
+I believe it's intuitive that larger distances indicates larger skill gap,
+therefore, higher scores.   
 
-By simply using a ML model to equate this distance to a score, minimizing
-the error, we can get a model that can learn where all of these maps and players
-should be placed on this line.
+By using a ML model to fit this distance to a score,
+we get a model that learns the best location to place these maps and players
+such that the constraint is best satisfied.
 """
 )
 st.subheader("A 2nd Dimension")
 st.write(
     """
-However, maps and players are actually more complex than this.
-Maps and players can be LN or RC-difficulty biased, meaning that they are
+However, maps and players are much more complex.
+They can be LN or RC-difficulty biased: 
 better at one type of difficulty than the other.
 
-In fact, we can even create a scenario where $P_1 - M_1 = P_1 - M_2$ despite
-$M_1$ being harder than $M_2$ in this dimension.
+In fact, we can create a scenario where the distance between $M_1$ and $P_1$,
+and the distance between $M_2$ and $P_1$ are the same.
 """
 )
 
@@ -90,11 +90,14 @@ st.code(
 st.write(
     """
 As shown, because $M_2$ is LN-easy, while $M_1$ is LN-hard, it compensates
-the difference in RC difficulty, resulting in the same score.
+the difference in RC difficulty, resulting in the same distance, thus same score.
 
-This argument, unfortunately, can be extended to infinitely more dimensions.
+This argument, *unfortunately*, can be extended to infinitely more dimensions.
+
 However, with more dimensions, it's harder to understand what exactly each
-dimension represents. 
+dimension represents.
+It's up to the creator to decide if they want an explainable model, 
+or an accurate model.
     """
 )
 
@@ -116,7 +119,9 @@ $$
 
 As shown, the above 2 vectors cannot be directly compared, as they are of
 different dimensions. Therefore, we need to map them to some common space of
-dimension $n_D$. If we only had the dimensions $RC$ and $LN$, we would have
+dimension $n_D$.
+
+E.g. If we only had the dimensions $RC$ and $LN$, we would have
 $n_D=2$.
 
 $$

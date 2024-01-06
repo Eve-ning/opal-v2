@@ -4,12 +4,11 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from model.model import Model
+from opal.model.delta_model import DeltaModel
 
 THIS_DIR = Path(__file__).parent
 # %%
@@ -18,9 +17,9 @@ st.title("Dan Analysis")
 
 
 @st.cache_resource()
-def load_model(path: str) -> Model:
+def load_model(path: str) -> DeltaModel:
     return (
-        Model.load_from_checkpoint(PROJECT_DIR / Path(path).as_posix())
+        DeltaModel.load_from_checkpoint(PROJECT_DIR / Path(path).as_posix())
         .eval()
         .cpu()
     )
@@ -28,26 +27,22 @@ def load_model(path: str) -> Model:
 
 @st.cache_data()
 def get_model_embeddings(
-    _m: Model,
+    _m: DeltaModel,
     path: str,
     n_mid: int = 1000,
     n_uid: int = 100,
 ):
-    ln_ratio = pd.read_csv("ln_ratio_all.csv", index_col=0)
     w_uid_rc = _m.uid_emb_rc.weight.detach().numpy().squeeze()
     w_uid_ln = _m.uid_emb_ln.weight.detach().numpy().squeeze()
     w_mid_rc = _m.mid_emb_rc.weight.detach().numpy().squeeze()
     w_mid_ln = _m.mid_emb_ln.weight.detach().numpy().squeeze()
+    ln_ratio = _m.ln_ratio_weights.detach().numpy().squeeze()
     df_mid = (
-        (
-            pd.DataFrame(
-                [_m.mid_le.classes_, w_mid_rc, w_mid_ln, ln_ratio]
-            ).T.rename(columns={0: "mid", 1: "RC", 2: "LN", 3: "ln_ratio"})
-        )
-        .merge(ln_ratio, left_on="mid", right_index=True)
-        .drop("ln_ratio_x", axis=1)
-        .rename(columns={"ln_ratio_y": "ln_ratio"})
-        .assign(mid=lambda x: x.mid.str[:-2])
+        pd.DataFrame(
+            [_m.mid_le.classes_, w_mid_rc, w_mid_ln, ln_ratio]
+        ).T.rename(columns={0: "mid", 1: "RC", 2: "LN", 3: "ln_ratio"})
+        # .merge(ln_ratio, left_on="mid", right_index=True)
+        # .assign(mid=lambda x: x.mid.str[:-2])
     )
 
     df_uid = pd.DataFrame([_m.uid_le.classes_, w_uid_rc, w_uid_ln]).T.rename(
@@ -66,39 +61,29 @@ model_path = st.selectbox(
     options=list(PROJECT_DIR.glob("**/*.ckpt")),
 )
 
-
 m = load_model(model_path)
 
-sample_mid = st.checkbox("Sample Maps", value=True)
-n_mid = (
-    st.slider(
-        "No. of Maps",
-        min_value=10,
-        max_value=(max_n_mid := len(m.mid_le.classes_)),
-        step=10,
-        disabled=not sample_mid,
+left, right = st.columns(2)
+with left:
+    p_mid = st.slider(
+        "% of Maps",
+        min_value=5,
+        max_value=100,
+        step=5,
     )
-    if sample_mid
-    else None
-)
-sample_uid = st.checkbox("Sample Players", value=True)
-n_uid = (
-    st.slider(
-        "No. of Players",
-        min_value=100,
-        max_value=(max_n_uid := len(m.uid_le.classes_)),
-        step=100,
-        disabled=not sample_uid,
+with right:
+    p_uid = st.slider(
+        "% of Players",
+        min_value=5,
+        max_value=100,
+        step=5,
     )
-    if sample_uid
-    else None
-)
 
 df_mid, df_uid = get_model_embeddings(
     m,
     model_path,
-    n_mid=n_mid,
-    n_uid=n_uid,
+    n_mid=int(len(m.mid_le.classes_) * p_mid / 100),
+    n_uid=int(len(m.uid_le.classes_) * p_uid / 100),
 )
 
 st.header("Map Embeddings")
@@ -157,7 +142,6 @@ st.plotly_chart(
         df_uid,
         x=df_uid["RC"],
         y=df_uid["LN"],
-        # text="uid",
         hover_name="uid",
     ),
     use_container_width=True,
