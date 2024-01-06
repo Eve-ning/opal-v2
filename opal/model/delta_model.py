@@ -104,7 +104,7 @@ class DeltaModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.003, weight_decay=1e-4)
+        return torch.optim.Adam(self.parameters(), lr=0.003, weight_decay=1e-5)
 
     def decode_acc(self, x):
         return self.acc_qt.inverse_transform(x.cpu().reshape(-1, 1))
