@@ -28,7 +28,9 @@ Then the distance between a map and a player is related to the
 score of the player on the map.
     """
 )
-st.warning("We say distance, but it's actually displacement, as it can be negative.")
+st.warning(
+    "We say distance, but it's actually displacement, as it can be negative."
+)
 
 st.code(
     """

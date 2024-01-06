@@ -19,7 +19,11 @@ st.title("Dan Analysis")
 
 @st.cache_resource()
 def load_model(path: str) -> Model:
-    return Model.load_from_checkpoint(PROJECT_DIR / Path(path).as_posix()).eval().cpu()
+    return (
+        Model.load_from_checkpoint(PROJECT_DIR / Path(path).as_posix())
+        .eval()
+        .cpu()
+    )
 
 
 @st.cache_data()
@@ -36,9 +40,9 @@ def get_model_embeddings(
     w_mid_ln = _m.mid_emb_ln.weight.detach().numpy().squeeze()
     df_mid = (
         (
-            pd.DataFrame([_m.mid_le.classes_, w_mid_rc, w_mid_ln, ln_ratio]).T.rename(
-                columns={0: "mid", 1: "RC", 2: "LN", 3: "ln_ratio"}
-            )
+            pd.DataFrame(
+                [_m.mid_le.classes_, w_mid_rc, w_mid_ln, ln_ratio]
+            ).T.rename(columns={0: "mid", 1: "RC", 2: "LN", 3: "ln_ratio"})
         )
         .merge(ln_ratio, left_on="mid", right_index=True)
         .drop("ln_ratio_x", axis=1)

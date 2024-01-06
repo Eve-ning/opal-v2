@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from prefect import flow, task
 
-from utils import db_conn
+from opal.utils import db_conn
 
 MAX = 320
 
@@ -41,20 +41,20 @@ def read_plays(conn):
         conn,
     ).assign(
         accuracy=lambda x: (
-                                   x.countgeki * 1
-                                   + x.count300 * 300 / MAX
-                                   + x.countkatu * 200 / MAX
-                                   + x.count100 * 100 / MAX
-                                   + x.count50 * 50 / MAX
-                           )
-                           / (
-                                   x.countgeki
-                                   + x.count300
-                                   + x.countkatu
-                                   + x.count100
-                                   + x.count50
-                                   + x.countmiss
-                           ),
+            x.countgeki * 1
+            + x.count300 * 300 / MAX
+            + x.countkatu * 200 / MAX
+            + x.count100 * 100 / MAX
+            + x.count50 * 50 / MAX
+        )
+        / (
+            x.countgeki
+            + x.count300
+            + x.countkatu
+            + x.count100
+            + x.count50
+            + x.countmiss
+        ),
         speed=lambda x: (
             np.where(
                 (x.enabled_mods & (1 << 6)) > 0,

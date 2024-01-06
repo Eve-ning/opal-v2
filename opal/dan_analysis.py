@@ -2,7 +2,7 @@ import lightning as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
 from prefect import flow, task
 
-from opal.data.data import df_dan, OsuDataModule
+from opal.data import df_dan, OsuDataModule
 from opal.model.delta_model import DeltaModel
 
 
