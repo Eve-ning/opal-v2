@@ -34,10 +34,7 @@ def read_maps(conn):
 @task(name="Read Plays")
 def read_plays(conn):
     return pd.read_sql(
-        r"SELECT * "
-        r"FROM osu_scores_mania_high "
-        r"WHERE enabled_mods = 0 "
-        r"AND score > 600000",
+        r"SELECT * FROM osu_scores_mania_high WHERE score > 600000",
         conn,
     ).assign(
         accuracy=lambda x: (
