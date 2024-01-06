@@ -12,45 +12,6 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 conn = db_conn.fn()
 
 
-@task(name="SQL Read Dan Maps")
-def df_dan() -> pd.DataFrame:
-    df = pd.read_sql(
-        r"SELECT * FROM osu_dataset WHERE mapname LIKE %s OR mapname LIKE %s",
-        conn,
-        params=(
-            "%Regular Dan Phase%",
-            "%LN Dan Phase%",
-        ),
-    )
-    df["dan_level"] = (
-        df["mapname"]
-        .str.extract(r"\[(.*?)\sDan")
-        .replace(
-            {
-                "0th": 0,
-                "1st": 1,
-                "2nd": 2,
-                "3rd": 3,
-                "4th": 4,
-                "5th": 5,
-                "6th": 6,
-                "7th": 7,
-                "8th": 8,
-                "9th": 9,
-                "10th": 10,
-                "Gamma": 11,
-                "Azimuth": 12,
-                "Zenith": 13,
-            }
-        )
-    )
-    df["dan_type"] = (
-        df["mapname"].str.extract(r"-\s(.*?)\s").replace({"Regular": "RC"})
-    )
-    df["mapname"] = df["dan_type"] + df["dan_level"].astype(str)
-    return df
-
-
 @task(name="SQL Read Maps by Keys")
 def df_k(keys: int = 7) -> pd.DataFrame:
     return pd.read_sql(
@@ -108,8 +69,12 @@ class OsuDataModule(pl.LightningDataModule):
             output_distribution="uniform",
         )
 
-        self.uid_enc = self.uid_le.fit_transform(df["username"])
-        self.mid_enc = self.mid_le.fit_transform(df["mapname"])
+        self.uid_enc = self.uid_le.fit_transform(
+            df["username"] + "/" + df["year"].astype(str)
+        )
+        self.mid_enc = self.mid_le.fit_transform(
+            df["mapname"] + "/" + df["speed"].astype(str)
+        )
         self.acc_tf = self.acc_qt.fit_transform(
             df["accuracy"].to_numpy().reshape(-1, 1)
         ).squeeze()
@@ -138,7 +103,9 @@ class OsuDataModule(pl.LightningDataModule):
     @property
     def ln_ratio_weights(self):
         return (
-            self.df.set_index("mapname")["ln_ratio"]
+            self.df.set_index(
+                [self.df["mapname"] + "/" + self.df["speed"].astype(str)]
+            )["ln_ratio"]
             .groupby(level=0)
             .first()[self.mid_le.classes_]
         )
