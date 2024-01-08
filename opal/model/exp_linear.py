@@ -8,4 +8,6 @@ class ExpLinear(nn.Linear):
         super().__init__(in_features, out_features, bias)
 
     def forward(self, x):
-        return F.linear(x, torch.exp(self.weight), self.bias)
+        return F.linear(
+            x, torch.distributions.Normal(0, 1).cdf(self.weight), self.bias
+        )
