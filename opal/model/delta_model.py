@@ -1,8 +1,9 @@
 from typing import Any
 
-import lightning as pl
+import numpy as np
+import pytorch_lightning as pl
 import torch
-from lightning.pytorch.utilities.types import STEP_OUTPUT
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import nn
 
@@ -31,12 +32,12 @@ class DeltaModel(pl.LightningModule):
         )
         n_uid = len(uid_le.classes_)
         n_mid = len(mid_le.classes_)
-        self.uid_emb_rc = nn.Embedding(n_uid, rc_emb)
-        self.mid_emb_rc = nn.Embedding(n_mid, rc_emb)
-        self.uid_emb_ln = nn.Embedding(n_uid, ln_emb)
-        self.mid_emb_ln = nn.Embedding(n_mid, ln_emb)
-        self.emb_rc_bn = nn.BatchNorm1d(rc_emb, affine=False)
-        self.emb_ln_bn = nn.BatchNorm1d(ln_emb, affine=False)
+        self.uid_rc_emb = nn.Embedding(n_uid, rc_emb)
+        self.mid_rc_emb = nn.Embedding(n_mid, rc_emb)
+        self.uid_ln_emb = nn.Embedding(n_uid, ln_emb)
+        self.mid_ln_emb = nn.Embedding(n_mid, ln_emb)
+        self.rc_emb_bn = nn.BatchNorm1d(rc_emb, affine=False)
+        self.ln_emb_bn = nn.BatchNorm1d(ln_emb, affine=False)
         self.delta_rc_to_acc = nn.Sequential(
             ExpLinear(rc_emb, rc_delta_emb),
             nn.ReLU(),
@@ -53,33 +54,31 @@ class DeltaModel(pl.LightningModule):
 
     def forward(self, x_uid, x_mid):
         w_ln_ratio = self.ln_ratio_weights[x_mid]
-        x_uid_emb_rc = self.uid_emb_rc(x_uid)
-        x_mid_emb_rc = self.mid_emb_rc(x_mid)
-        x_uid_emb_ln = self.uid_emb_ln(x_uid)
-        x_mid_emb_ln = self.mid_emb_ln(x_mid)
 
-        x_rc_delta = (x_uid_emb_rc - x_mid_emb_rc) / 2
-        x_ln_delta = (x_uid_emb_ln - x_mid_emb_ln) / 2
+        x_uid_rc_emb = self.uid_rc_emb(x_uid)
+        x_mid_rc_emb = self.mid_rc_emb(x_mid)
+        x_uid_ln_emb = self.uid_ln_emb(x_uid)
+        x_mid_ln_emb = self.mid_ln_emb(x_mid)
 
-        x_rc_acc = self.delta_rc_to_acc(self.emb_rc_bn(x_rc_delta))
-        x_ln_acc = self.delta_ln_to_acc(self.emb_ln_bn(x_ln_delta))
+        x_rc_emb_delta = x_uid_rc_emb - x_mid_rc_emb
+        x_ln_emb_delta = x_uid_ln_emb - x_mid_ln_emb
+
+        x_rc_emb_delta_bn = self.rc_emb_bn(x_rc_emb_delta)
+        x_ln_emb_delta_bn = self.ln_emb_bn(x_ln_emb_delta)
+
+        x_rc_acc = self.delta_rc_to_acc(x_rc_emb_delta_bn)
+        x_ln_acc = self.delta_ln_to_acc(x_ln_emb_delta_bn)
 
         y = (
             x_rc_acc.squeeze() * (1 - w_ln_ratio)
             + x_ln_acc.squeeze() * w_ln_ratio
         )
-        return y
-
-    def step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
-        x_uid, x_mid, y = batch
-        y_pred = self(x_uid, x_mid)
-        loss = nn.MSELoss()(y_pred, y)
-        return loss
+        return y.squeeze()
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
         y_pred = self(x_uid, x_mid)
-        loss = nn.MSELoss()(y_pred, y)
+        loss = torch.sqrt(nn.MSELoss()(y_pred, y))
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
@@ -104,7 +103,19 @@ class DeltaModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.003, weight_decay=1e-5)
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=0.003, weight_decay=1e-5
+        )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            patience=2,
+            factor=0.5,
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
+        }
 
     def decode_acc(self, x):
         return self.acc_qt.inverse_transform(x.cpu().reshape(-1, 1))
@@ -113,13 +124,21 @@ class DeltaModel(pl.LightningModule):
         return self.acc_qt.transform(x.cpu().reshape(-1, 1)).squeeze()
 
     def decode_uid(self, x):
-        return self.uid_le.inverse_transform(x.cpu().reshape(-1, 1))
+        return self.uid_le.inverse_transform(x)
 
     def decode_mid(self, x):
-        return self.mid_le.inverse_transform(x.cpu().reshape(-1, 1))
+        return self.mid_le.inverse_transform(x)
 
     def encode_uid(self, x):
-        return self.uid_le.transform(x.cpu().reshape(-1, 1)).squeeze()
+        return self.uid_le.transform(x)
 
     def encode_mid(self, x):
-        return self.mid_le.transform(x.cpu().reshape(-1, 1)).squeeze()
+        return self.mid_le.transform(x)
+
+    @property
+    def uid_classes(self) -> np.ndarray:
+        return np.array(self.uid_le.classes_)
+
+    @property
+    def mid_classes(self) -> np.ndarray:
+        return np.array(self.mid_le.classes_)
