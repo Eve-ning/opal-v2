@@ -4,7 +4,7 @@ from prefect import task
 from opal.utils import db_conn
 
 
-import lightning as pl
+import pytorch_lightning as pl
 import torch
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch.utils.data import TensorDataset, DataLoader, random_split
