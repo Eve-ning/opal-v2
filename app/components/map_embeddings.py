@@ -1,3 +1,4 @@
+import numpy as np
 import plotly.express as px
 import streamlit as st
 
@@ -20,7 +21,7 @@ DAN_MAPPING = {
 }
 
 
-def map_embeddings(df, p_mid=1, dans_only=True):
+def map_embeddings(df):
     st.error(
         "Currently, this is rather experimental. "
         "We're working on making this more intuitive."
@@ -31,6 +32,11 @@ def map_embeddings(df, p_mid=1, dans_only=True):
         "Each dimension (x, y) represents a different difficulty element, "
         "in this case, we have RC and LN."
     )
+    dans_only = st.checkbox("Dans Only", value=True)
+
+    df = df.reset_index()
+    df["RC"] = np.mean(df["RC"].tolist(), axis=1)
+    df["LN"] = np.mean(df["LN"].tolist(), axis=1)
 
     m_scaled_tab, m_unscaled_tab = st.tabs(["Scaled", "Unscaled"])
 
@@ -38,22 +44,25 @@ def map_embeddings(df, p_mid=1, dans_only=True):
         if dans_only:
             df = df[
                 (
-                    df["mid"].str.contains("Regular Dan Phase")
-                    | df["mid"].str.contains("LN Dan Phase")
+                    df["name"].str.contains("Regular Dan Phase")
+                    | df["name"].str.contains("LN Dan Phase")
                 )
-                & df["mid"].str.endswith("/0")
+                & (df["speed"] == "NT")
             ]
-        df = df.sample(frac=p_mid, random_state=0)
+
+        # Concatenate name and speed for display on plotly
+        df["name"] = df["name"] + " " + df["speed"]
+
         x = df["RC"] * (1 - df["ln_ratio"]) if scaled else df["RC"]
         y = df["LN"] * df["ln_ratio"] if scaled else df["LN"]
         return px.scatter(
             df,
             x=x,
             y=y,
-            hover_name="mid",
+            hover_name="name",
             labels={"x": "RC", "y": "LN"},
             size=[1] * len(df) if dans_only else None,
-            text=df["mid"]
+            text=df["name"]
             .str.extract(r"\[\b(\w+)\b")
             .replace(
                 {
@@ -76,7 +85,7 @@ def map_embeddings(df, p_mid=1, dans_only=True):
             .values.flatten()
             if dans_only
             else None,
-            color=df["mid"].str.extract(r"\-\s\b(\w+)\b").values.flatten()
+            color=df["name"].str.extract(r"\-\s\b(\w+)\b").values.flatten()
             if dans_only
             else None,
         ).update_layout(
@@ -91,7 +100,6 @@ def map_embeddings(df, p_mid=1, dans_only=True):
             "Therefore, if a map is LN-hard, but has only a few LNs, "
             "the LN embedding will be small."
         )
-
         st.plotly_chart(
             plot(df, scaled=True),
             use_container_width=True,
