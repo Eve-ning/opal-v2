@@ -20,21 +20,20 @@ and the further right a player is, the better they are.
 Lower Skill Higher Skill
 ```
 
-Then the distance between a map and player is related to the 
-score.
+Then the distance between a map and player is related to accuracy.
 ```
-. P1 - M1 = Higher Score
+. P1 - M1 = Higher Acc
    ◄──────────────────►
   ┌────┐  ┌────┐  ┌────┐
 ──┤ M1 ├──┤ M2 ├──┤ P1 ├──►
   └────┘  └────┘  └────┘
            ◄──────────►
-        P1 - M2 = Lower Score
+        P1 - M2 = Lower Acc
 ```
 I believe it's intuitive that larger distances indicates larger skill gap,
-therefore, higher scores.   
+therefore, higher accuracies.   
 
-By using a ML model to fit this distance to a score,
+By using a ML model to fit this distance to an accuracy,
 we get a model that learns the best location to place these maps and players
 such that the constraint is best satisfied.
 
@@ -66,7 +65,8 @@ and the distance between $M_2$ and $P_1$ are the same.
 
 
 As shown, because $M_2$ is LN-easy, while $M_1$ is LN-hard, it compensates
-the difference in RC difficulty, resulting in the same distance, thus same score.
+the difference in RC difficulty, resulting in the same distance, 
+thus same accuracy.
 
 This argument, *unfortunately*, can be extended to infinitely more dimensions.
 
@@ -127,15 +127,15 @@ vector to another space.
 ```
 Now that we have a common space, we can compare the vectors.
 
-We'll denote this difference as $Q - M = \Delta \in\mathbb{R}^{n_D}$.
+We'll denote this difference as $Q - N = \Delta \in\mathbb{R}^{n_D}$.
 
-### Mapping $\Delta$ to a score
+### Mapping $\Delta$ to Accuracy
 
 There are 2 constraints we have:
 
 1) The transform is non-linear.
 2) The transform must be monotonically increasing. Which means, if we increase
-   the distance, the score must increase.
+   the distance, the accuracy must increase.
  
 In order to achieve this, we can use a neural network. However, to satisfy
 constraint 2, we need to force all weights to be positive, to guarantee a
@@ -145,7 +145,7 @@ To do so, we use the exponential of
 the weights when we apply the linear transformation, this allows the weights
 to be positive, while still allowing the model to learn non-linearity
 
-The architecture is laughably simple, but it works:
+The architecture is simple, but it works:
 
 $$
 \Delta
@@ -153,7 +153,7 @@ $$
 \rightarrow \text{ReLU}
 \rightarrow \text{ExpLinear(N, 1)}
 \rightarrow \text{Sigmoid}
-\rightarrow \text{Score}
+\rightarrow \text{Acc}
 $$
 
 ```
@@ -178,7 +178,7 @@ $$
 └────┴─────┴────┘ └──┬──┴──┬──┴──┬──┘ └─────┘
                      │     │     │       ▲
                      │     │     │       s
-                     │     │     │    ┌──┴─ ─┐
+                     │     │     │    ┌──┴──┐
                      │     │     └───►│ W00 │
                      │     │          ├─────┤
                      │     │          │  .  │
@@ -189,14 +189,86 @@ $$
                                       └─────┘
 ```
 
-### Weighting the dimensions
+We'll denote this transform as $A(\Delta)=\text{Acc}$.
 
-Currently, we only use 2 dimensions, $RC$ and $LN$.
-With this, we can weigh the accuracy contribution of each dimension
-as we have the density of each component in our data.
+### LN Dimension Weighting 
 
-This allows us to not only learn the effects of each dimension, but also
-ensure that the dimension is labelled correctly when trained.
+Fortunately, each map embeds information on its LN density. 
+That means we can assume that for a LN-heavy map, the LN dimension contributes
+more to the accuracy than the RC dimension, and vice versa.
 
+We denote this ratio as a proportion $\rho_{LN}$ and $\rho_{RC}$, such that
+
+$$\rho_{LN},\rho_{RC}\in[0,1]:\rho_{LN}+\rho_{RC}=1$$
+
+This means that if we have $\Delta_{RC}$ and $\Delta_{LN}$, then we have 
+$\text{Acc}_{RC}$ and $\text{Acc}_{LN}$. As both $\text{Acc}\in[0,1]$, 
+the final accuracy is simply the weighted sum of the 2 accuracies.
+
+$$
+\begin{align*}
+\text{Acc}&=\rho_{RC}\text{Acc}_{RC}+\rho_{LN}\text{Acc}_{LN}\\
+&=\sum_T^{RC,LN} \rho_T\text{Acc}_T
+\end{align*}
+$$
+
+By doing so, we too train model alignment to the expected
+LN, RC embeddings, in turn, improves interpretability.
+
+### Interpreting Map and Player Embeddings
+
+Unfortunately, the Map and Player embeddings aren't easily interpretable, 
+this is because we only made use of their difference, but never their absolute
+locations.
+
+For example, if we forced $Q - N = 1$, $Q$ and $N$ can be any number, as long
+as their difference is 1. However, if we'd try to fix some values, not only 
+would it be complex, it'll interfere with the model's ability to learn.
+Therefore, the approach, shouldn't be to force the embeddings to be
+interpretable, but to use the embeddings, then preprocess it to make sense.
+
+A simple solution is to concatenate the embeddings, however, it can be a bit 
+odd that for a map and player with the same embeddings, which yields 
+$\Delta=0$, the accuracy is some arbitrary value. Thus, it's good to set some
+constraints on the embeddings, such that $\Delta=0$ yields $\text{Acc}=0.95$, 
+which is a common metric to show that the player is able to play the map well.
+
+We want to solve the following problem:
+
+$$
+Acc = 0.95 = \sum_T^{RC,LN} A_T(Q_T-N_T + \text{Bias}_T)
+$$
+
+This 
+
+Let's say we want to show $Q, N$ (the embeddings), in the range $\in[0,1]$,
+while maintaining some sort of meaning with their differences. Before that, we
+review 
+
+$$
+\begin{align*}
+\text{Acc}&=\rho A(Q-N)\\
+\frac{\text{Acc}}{\rho}&=A(Q-N)\\
+A^{-1}\left(\frac{\text{Acc}}{\rho}\right)&=Q-N\\
+N + A^{-1}\left(\frac{\text{Acc}}{\rho}\right)&=Q\\
+A^{-1}\left(\frac{\text{Acc}}{\rho}\right) + Q&=N\\
+\end{align*} 
+$$
+
+With this formula, given a map, and an accuracy, we can find the player 
+embedding that is expected to achieve that accuracy.
+
+Furthermore, we can introduce an inequality constraint, such that we find all
+players that are expected to achieve an accuracy greater than some threshold.
+
+$$
+\begin{align*}
+\text{Threshold}&\leq\rho A(Q-N)\\
+\frac{\text{Threshold}}{\rho}&\leq A(Q-N)\\
+A^{-1}\left(\frac{\text{Threshold}}{\rho}\right)&\leq Q-N\\
+N + A^{-1}\left(\frac{\text{Threshold}}{\rho}\right)&\leq Q\\
+A^{-1}\left(\frac{\text{Threshold}}{\rho}\right) + Q&\leq N\\
+\end{align*}
+$$
 """
 )
