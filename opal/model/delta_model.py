@@ -137,3 +137,13 @@ class DeltaModel(pl.LightningModule):
     @property
     def mid_classes(self) -> np.ndarray:
         return np.array(self.mid_le.classes_)
+
+    def predict_all(self):
+        n_uid = len(self.uid_classes)
+        n_mid = len(self.mid_classes)
+        a = torch.cartesian_prod(torch.arange(n_uid), torch.arange(n_mid))
+        uids = a[:, 0]
+        mids = a[:, 1]
+        return self.acc_qt.inverse_transform(
+            self(uids, mids).detach().numpy().reshape(-1, 1)
+        ).reshape(n_uid, n_mid)
