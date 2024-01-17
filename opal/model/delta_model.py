@@ -7,7 +7,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import nn
 
-from opal.model.exp_linear import ExpLinear
+from opal.model.positive_linear import PositiveLinear
 
 
 class DeltaModel(pl.LightningModule):
@@ -19,8 +19,6 @@ class DeltaModel(pl.LightningModule):
         ln_ratio_weights: list,
         rc_emb: int = 1,
         ln_emb: int = 1,
-        rc_delta_emb: int = 3,
-        ln_delta_emb: int = 3,
     ):
         super().__init__()
         self.uid_le = uid_le
@@ -39,15 +37,11 @@ class DeltaModel(pl.LightningModule):
         self.rc_emb_bn = nn.BatchNorm1d(rc_emb, affine=False)
         self.ln_emb_bn = nn.BatchNorm1d(ln_emb, affine=False)
         self.delta_rc_to_acc = nn.Sequential(
-            ExpLinear(rc_emb, rc_delta_emb),
-            nn.ReLU(),
-            ExpLinear(rc_delta_emb, 1),
+            PositiveLinear(rc_emb, 1),
             nn.Sigmoid(),
         )
         self.delta_ln_to_acc = nn.Sequential(
-            ExpLinear(ln_emb, ln_delta_emb),
-            nn.ReLU(),
-            ExpLinear(ln_delta_emb, 1),
+            PositiveLinear(ln_emb, 1),
             nn.Sigmoid(),
         )
         self.save_hyperparameters()
@@ -104,7 +98,8 @@ class DeltaModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=0.003, weight_decay=1e-5
+            self.parameters(),
+            lr=0.003,  # weight_decay=1e-5
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
