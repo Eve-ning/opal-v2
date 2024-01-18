@@ -123,7 +123,8 @@ with st.expander("Star Rating Analysis"):
             yaxis_title="Count of Maps",
             showlegend=False,
         )
-        .update_xaxes(autorange="reversed")
+        .update_xaxes(autorange="reversed"),
+        use_container_width=True,
     )
     st.markdown(
         f"""
@@ -144,17 +145,17 @@ with st.expander("Star Rating Analysis"):
 # %%
 min_sr, max_sr = 2.5, 10
 
+# TODO: Find a better formula to convert the threshold to sr
 df_accs_thres["new_sr"] = (max_sr - min_sr) * (
     np.sin((1 - df_accs_thres["thres"]) * np.pi / 2)
 ) + min_sr
 
 
 # %%
-
 dm = OsuDataModule(df_k(7))
 df = dm.df.groupby(["mid", "uid"]).agg({"accuracy": "mean"}).reset_index()
-# %%
 df_p = df.pivot(index="uid", columns="mid", values="accuracy")
+
 # %%
 df_err = accs - df_p
 df_m_err = (df_err.abs()).quantile(0.85, axis=0).rename("uncertainty")
