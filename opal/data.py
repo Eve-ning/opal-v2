@@ -52,7 +52,6 @@ class OsuDataModule(pl.LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
         self.n_train = n_train
-        self.df = df
         self.min_user_plays = min_user_plays
         self.min_map_plays = min_map_plays
         self.n_acc_quantiles = n_acc_quantiles
@@ -65,13 +64,11 @@ class OsuDataModule(pl.LightningDataModule):
             n_quantiles=self.n_acc_quantiles,
             output_distribution="uniform",
         )
-
-        self.uid_enc = self.uid_le.fit_transform(
-            df["username"] + "/" + df["year"].astype(str)
-        )
-        self.mid_enc = self.mid_le.fit_transform(
-            df["mapname"] + "/" + df["speed"].astype(str)
-        )
+        df["uid"] = df["username"] + "/" + df["year"].astype(str)
+        df["mid"] = df["mapname"] + "/" + df["speed"].astype(str)
+        self.df = df
+        self.uid_enc = self.uid_le.fit_transform(df["uid"])
+        self.mid_enc = self.mid_le.fit_transform(df["mid"])
         self.acc_tf = self.acc_qt.fit_transform(
             df["accuracy"].to_numpy().reshape(-1, 1)
         ).squeeze()
