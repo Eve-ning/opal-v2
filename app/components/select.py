@@ -1,5 +1,9 @@
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
+
+from opal.model.delta_model import DeltaModel
 
 
 def select_user(
@@ -27,3 +31,18 @@ def select_map(
         horizontal=True,
     )
     return mapname, mapspeed
+
+
+@st.cache_resource()
+def load_model(path: Path) -> DeltaModel:
+    return DeltaModel.load_from_checkpoint(Path(path).as_posix()).eval().cpu()
+
+
+def select_model(model_search_pth: Path) -> tuple[DeltaModel, str]:
+    model_path = st.selectbox(
+        "Model Path",
+        format_func=lambda x: x.parts[-3],
+        options=list(p for p in model_search_pth.glob("**/*.ckpt")),
+        placeholder="Select a model",
+    )
+    return load_model(model_search_pth / model_path), model_path.parts[-3]
