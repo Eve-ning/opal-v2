@@ -12,7 +12,6 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 conn = db_conn.fn()
 
 
-@task(name="SQL Read Maps by Keys")
 def df_k(keys: int = 7) -> pd.DataFrame:
     return pd.read_sql(
         rf"SELECT * FROM osu_dataset WHERE `keys` = {keys}",
@@ -20,7 +19,6 @@ def df_k(keys: int = 7) -> pd.DataFrame:
     )
 
 
-@task(name="Remove Low Support Maps")
 def df_remove_low_support_maps(
     df: pd.DataFrame, min_map_plays: int = 50
 ) -> pd.DataFrame:
@@ -31,7 +29,6 @@ def df_remove_low_support_maps(
     )
 
 
-@task(name="Remove Low Support Users")
 def df_remove_low_support_users(
     df: pd.DataFrame, min_user_plays: int = 50
 ) -> pd.DataFrame:
