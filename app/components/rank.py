@@ -32,7 +32,8 @@ def player_rank_hist(df: pd.DataFrame, username: str, useryear: str):
             title=f"Rank Distribution of {username} in {useryear}",
             xaxis_title="Rank",
             yaxis_title="Count",
-        )
+        ),
+        use_container_width=True,
     )
 
 
@@ -58,5 +59,6 @@ def map_rank_hist(df: pd.DataFrame, mapname: str, mapspeed_str: str):
         )
         .add_vline(0.95, line_color="red", line_width=2, opacity=0.65)
         .add_vline(0.90, line_color="yellow", line_width=2, opacity=0.65)
-        .add_vline(0.85, line_color="green", line_width=2, opacity=0.65)
+        .add_vline(0.85, line_color="green", line_width=2, opacity=0.65),
+        use_container_width=True,
     )
