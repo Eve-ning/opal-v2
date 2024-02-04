@@ -36,7 +36,7 @@ def create_model():
     )
 
     trainer = pl.Trainer(
-        max_epochs=50,
+        max_epochs=30,
         accelerator="cpu",
         default_root_dir="checkpoints",
         callbacks=[

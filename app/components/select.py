@@ -2,28 +2,28 @@ from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+import sys
 
+PROJECT_DIR = Path(__file__).parents[1]
+sys.path.append(PROJECT_DIR.as_posix())
 from opal.model.delta_model import DeltaModel
 
 
-def select_user(
-    df_uid_name: pd.DataFrame,
-    df_uid_year: pd.DataFrame,
+def st_select_user(
+    name_opts: pd.DataFrame,
+    year_opts: pd.DataFrame,
 ):
     left, right = st.columns(2)
-    username = left.selectbox("User", df_uid_name.unique())
+    username = left.selectbox("User", name_opts.unique())
     useryear = right.select_slider(
-        "Year", df_uid_year[df_uid_name == username].unique()
+        "Year", year_opts[name_opts == username].unique()
     )
     return username, useryear
 
 
-def select_map(
-    df_mid_name: pd.DataFrame,
-    df_mid_speed: pd.DataFrame,
-):
-    mapname = st.selectbox("Map", df_mid_name.unique())
-    speed_options = df_mid_speed[df_mid_name == mapname].unique()
+def st_select_map(name_opts: pd.Series, speed_opts: pd.Series):
+    mapname = st.selectbox("Map", name_opts.unique())
+    speed_options = speed_opts[name_opts == mapname].unique()
     mapspeed = st.radio(
         "Speed",
         speed_options,
@@ -38,7 +38,7 @@ def load_model(path: Path) -> DeltaModel:
     return DeltaModel.load_from_checkpoint(Path(path).as_posix()).eval().cpu()
 
 
-def select_model(model_search_pth: Path) -> tuple[DeltaModel, str]:
+def st_select_model(model_search_pth: Path) -> tuple[DeltaModel, str]:
     model_path = st.selectbox(
         "Model Path",
         format_func=lambda x: x.parts[-3],

@@ -1,6 +1,7 @@
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.utilities.types import STEP_OUTPUT
@@ -46,27 +47,24 @@ class DeltaModel(pl.LightningModule):
         )
         self.save_hyperparameters()
 
-    def forward(self, x_uid, x_mid):
-        w_ln_ratio = self.ln_ratio_weights[x_mid]
+    def forward(self, uid, mid, mixup=None, shuf_idx=None):
+        w_ln_ratio = self.ln_ratio_weights[mid]
 
-        x_uid_rc_emb = self.uid_rc_emb(x_uid)
-        x_mid_rc_emb = self.mid_rc_emb(x_mid)
-        x_uid_ln_emb = self.uid_ln_emb(x_uid)
-        x_mid_ln_emb = self.mid_ln_emb(x_mid)
+        uid_rc_emb = self.uid_rc_emb(uid)
+        mid_rc_emb = self.mid_rc_emb(mid)
+        uid_ln_emb = self.uid_ln_emb(uid)
+        mid_ln_emb = self.mid_ln_emb(mid)
 
-        x_rc_emb_delta = x_uid_rc_emb - x_mid_rc_emb
-        x_ln_emb_delta = x_uid_ln_emb - x_mid_ln_emb
+        rc_emb_delta = uid_rc_emb - mid_rc_emb
+        ln_emb_delta = uid_ln_emb - mid_ln_emb
 
-        x_rc_emb_delta_bn = self.rc_emb_bn(x_rc_emb_delta)
-        x_ln_emb_delta_bn = self.ln_emb_bn(x_ln_emb_delta)
+        rc_emb = self.rc_emb_bn(rc_emb_delta)
+        ln_emb = self.ln_emb_bn(ln_emb_delta)
 
-        x_rc_acc = self.delta_rc_to_acc(x_rc_emb_delta_bn)
-        x_ln_acc = self.delta_ln_to_acc(x_ln_emb_delta_bn)
+        rc_acc = self.delta_rc_to_acc(rc_emb)
+        ln_acc = self.delta_ln_to_acc(ln_emb)
 
-        y = (
-            x_rc_acc.squeeze() * (1 - w_ln_ratio)
-            + x_ln_acc.squeeze() * w_ln_ratio
-        )
+        y = rc_acc.squeeze() * (1 - w_ln_ratio) + ln_acc.squeeze() * w_ln_ratio
         return y.squeeze()
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
@@ -98,12 +96,11 @@ class DeltaModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.parameters(),
-            lr=0.003,  # weight_decay=1e-5
+            self.parameters(), lr=0.003  # , weight_decay=1e-5
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            patience=2,
+            patience=1,
             factor=0.5,
         )
         return {
@@ -138,12 +135,16 @@ class DeltaModel(pl.LightningModule):
     def mid_classes(self) -> np.ndarray:
         return np.array(self.mid_le.classes_)
 
-    def predict_all(self):
+    def predict_all(self) -> pd.DataFrame:
         n_uid = len(self.uid_classes)
         n_mid = len(self.mid_classes)
         a = torch.cartesian_prod(torch.arange(n_uid), torch.arange(n_mid))
         uids = a[:, 0]
         mids = a[:, 1]
-        return self.acc_qt.inverse_transform(
+        accs = self.acc_qt.inverse_transform(
             self(uids, mids).detach().numpy().reshape(-1, 1)
         ).reshape(n_uid, n_mid)
+
+        return pd.DataFrame(
+            accs, columns=self.mid_classes, index=self.uid_classes
+        )

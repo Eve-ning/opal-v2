@@ -13,7 +13,7 @@ THIS_DIR = Path(__file__).parent
 
 
 @st.cache_data()
-def player_rank(df: pd.DataFrame, n_uid: int):
+def st_player_rank(df: pd.DataFrame, n_uid: int):
     left, right = st.columns(2)
     left.metric(
         "Player Median Rank",
@@ -26,7 +26,7 @@ def player_rank(df: pd.DataFrame, n_uid: int):
 
 
 @st.cache_data()
-def player_rank_hist(df: pd.DataFrame, username: str, useryear: str):
+def st_player_rank_hist(df: pd.DataFrame, username: str, useryear: str):
     st.plotly_chart(
         px.histogram(x=df).update_layout(
             title=f"Rank Distribution of {username} in {useryear}",
@@ -38,7 +38,7 @@ def player_rank_hist(df: pd.DataFrame, username: str, useryear: str):
 
 
 @st.cache_data()
-def map_ranks(df: pd.DataFrame):
+def st_map_ranks(df: pd.DataFrame):
     st.markdown("Players with at least ...")
     r_b, r_a, r_s = st.columns(3)
 
@@ -48,7 +48,7 @@ def map_ranks(df: pd.DataFrame):
 
 
 @st.cache_data()
-def map_rank_hist(df: pd.DataFrame, mapname: str, mapspeed_str: str):
+def st_map_rank_hist(df: pd.DataFrame, mapname: str, mapspeed_str: str):
     st.plotly_chart(
         px.histogram(x=df)
         .update_layout(

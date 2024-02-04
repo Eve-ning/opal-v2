@@ -21,7 +21,7 @@ DAN_MAPPING = {
 }
 
 
-def map_embeddings(df):
+def st_map_emb(df):
     st.error(
         "Currently, this is rather experimental. "
         "We're working on making this more intuitive."
@@ -35,65 +35,47 @@ def map_embeddings(df):
     dans_only = st.checkbox("Dans Only", value=True)
 
     df = df.reset_index()
-    df["RC"] = np.mean(df["RC"].tolist(), axis=1)
-    df["LN"] = np.mean(df["LN"].tolist(), axis=1)
+    if dans_only:
+        df = df[
+            (
+                df["name"].str.contains("Regular Dan Phase")
+                | df["name"].str.contains("LN Dan Phase")
+            )
+            & (df["speed"] == "0")
+        ]
+    rc = np.mean(df["RC"].tolist(), axis=1)
+    ln = np.mean(df["LN"].tolist(), axis=1)
+    ln_ratio = df["ln_ratio"]
+    name = df["name"] + " " + df["speed"]
+    name_text = (
+        (
+            name.str.extract(r"\[\b(\w+)\b")
+            .replace(DAN_MAPPING)
+            .values.flatten()
+        )
+        if dans_only
+        else None
+    )
+    name_color = (
+        name.str.extract(r"\-\s\b(\w+)\b").values.flatten()
+        if dans_only
+        else None
+    )
 
-    m_scaled_tab, m_unscaled_tab = st.tabs(["Scaled", "Unscaled"])
-
-    def plot(df, scaled):
-        if dans_only:
-            df = df[
-                (
-                    df["name"].str.contains("Regular Dan Phase")
-                    | df["name"].str.contains("LN Dan Phase")
-                )
-                & (df["speed"] == "NT")
-            ]
-
-        # Concatenate name and speed for display on plotly
-        df["name"] = df["name"] + " " + df["speed"]
-
-        x = df["RC"] * (1 - df["ln_ratio"]) if scaled else df["RC"]
-        y = df["LN"] * df["ln_ratio"] if scaled else df["LN"]
+    def plot(rc, ln, name):
         return px.scatter(
-            df,
-            x=x,
-            y=y,
-            hover_name="name",
+            x=rc,
+            y=ln,
+            hover_name=name,
             labels={"x": "RC", "y": "LN"},
             size=[1] * len(df) if dans_only else None,
-            text=df["name"]
-            .str.extract(r"\[\b(\w+)\b")
-            .replace(
-                {
-                    "0th": 0,
-                    "1st": 1,
-                    "2nd": 2,
-                    "3rd": 3,
-                    "4th": 4,
-                    "5th": 5,
-                    "6th": 6,
-                    "7th": 7,
-                    "8th": 8,
-                    "9th": 9,
-                    "10th": 10,
-                    "Gamma": 11,
-                    "Azimuth": 12,
-                    "Zenith": 13,
-                }
-            )
-            .values.flatten()
-            if dans_only
-            else None,
-            color=df["name"].str.extract(r"\-\s\b(\w+)\b").values.flatten()
-            if dans_only
-            else None,
+            text=name_text,
+            color=name_color,
         ).update_layout(
-            font=dict(
-                size=16,  # Set the font size here
-            ),
-        )
+            font=dict(size=16)
+        )  # Set the font size here
 
+    m_scaled_tab, m_unscaled_tab = st.tabs(["Scaled", "Unscaled"])
     with m_scaled_tab:
         st.info(
             "**Embeddings are scaled** by the ratio of LN/RC notes. "
@@ -101,7 +83,7 @@ def map_embeddings(df):
             "the LN embedding will be small."
         )
         st.plotly_chart(
-            plot(df, scaled=True),
+            plot(rc * (1 - ln_ratio), ln * ln_ratio, name),
             use_container_width=True,
         )
 
@@ -113,6 +95,6 @@ def map_embeddings(df):
             "Which isn't representative of the map."
         )
         st.plotly_chart(
-            plot(df, scaled=False),
+            plot(rc, ln, name),
             use_container_width=True,
         )

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel
 
 
-def delta_to_acc(m: "DeltaModel"):
+def st_delta_to_acc(m: "DeltaModel"):
     x_delta = torch.linspace(-4, 4, 100)
     rc_dim = m.uid_rc_emb.weight.shape[1]
     ln_dim = m.uid_ln_emb.weight.shape[1]

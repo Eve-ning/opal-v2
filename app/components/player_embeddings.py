@@ -3,7 +3,7 @@ import streamlit as st
 import plotly.express as px
 
 
-def player_embeddings(df):
+def st_player_emb(df):
     df = df.reset_index()
     df["RC"] = np.mean(df["RC"].tolist(), axis=1)
     df["LN"] = np.mean(df["LN"].tolist(), axis=1)

@@ -9,7 +9,7 @@ MAX = 320
 
 @task(name="Read Maps")
 def read_maps(conn):
-    return pd.read_sql(
+    df = pd.read_sql(
         r"SELECT * FROM osu_beatmaps WHERE playmode = 3 "
         r"AND difficultyrating > 2.5 ",
         conn,
@@ -29,6 +29,7 @@ def read_maps(conn):
             "passcount",
         ]
     ]
+    return df
 
 
 @task(name="Read Plays")
@@ -127,7 +128,22 @@ def create_dataset():
     df_plays_raw = read_plays(conn)
     df_players_raw = read_players(conn)
     df = merge(df_maps_raw, df_plays_raw, df_players_raw)
-    df["rand"] = np.random.uniform(0, 1, len(df))
+    df = (
+        df.merge(
+            df["mid"].value_counts(normalize=True).rename("p_mid"),
+            left_on="mid",
+            right_index=True,
+        )
+        .merge(
+            df["uid"].value_counts(normalize=True).rename("p_uid"),
+            left_on="uid",
+            right_index=True,
+        )
+        .assign(
+            prob=lambda x: x["p_mid"] * x["p_uid"],
+            rand=lambda x: np.random.uniform(0, 1, len(x)),
+        )
+    )
     write_dataset(df, conn)
     conn.dispose()
 
