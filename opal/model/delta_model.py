@@ -7,6 +7,7 @@ import torch
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import nn
+from torch.nn.functional import softplus, hardsigmoid
 
 from opal.model.positive_linear import PositiveLinear
 
@@ -37,17 +38,16 @@ class DeltaModel(pl.LightningModule):
         self.mid_ln_emb = nn.Embedding(n_mid, ln_emb)
         self.rc_emb_bn = nn.BatchNorm1d(rc_emb, affine=False)
         self.ln_emb_bn = nn.BatchNorm1d(ln_emb, affine=False)
+
         self.delta_rc_to_acc = nn.Sequential(
-            PositiveLinear(rc_emb, 1),
-            nn.Sigmoid(),
+            PositiveLinear(rc_emb, 2),
         )
         self.delta_ln_to_acc = nn.Sequential(
-            PositiveLinear(ln_emb, 1),
-            nn.Sigmoid(),
+            PositiveLinear(ln_emb, 2),
         )
         self.save_hyperparameters()
 
-    def forward(self, uid, mid, mixup=None, shuf_idx=None):
+    def forward(self, uid, mid):
         w_ln_ratio = self.ln_ratio_weights[mid]
 
         uid_rc_emb = self.uid_rc_emb(uid)
@@ -64,34 +64,46 @@ class DeltaModel(pl.LightningModule):
         rc_acc = self.delta_rc_to_acc(rc_emb)
         ln_acc = self.delta_ln_to_acc(ln_emb)
 
-        y = rc_acc.squeeze() * (1 - w_ln_ratio) + ln_acc.squeeze() * w_ln_ratio
-        return y.squeeze()
+        rc_acc_mean = hardsigmoid(rc_acc[:, 0])
+        rc_acc_var = softplus(rc_acc[:, 1])
+        ln_acc_mean = hardsigmoid(ln_acc[:, 0])
+        ln_acc_var = softplus(ln_acc[:, 1])
+
+        y_mean = rc_acc_mean * (1 - w_ln_ratio) + ln_acc_mean * w_ln_ratio
+        y_var = rc_acc_var * (1 - w_ln_ratio) + ln_acc_var * w_ln_ratio
+        return y_mean, y_var
+
+    @staticmethod
+    def loss_nll(y_pred_mean, y_pred_var, y, eps=1e-10):
+        return (torch.log(y_pred_var + eps) / 2) + (
+            (y - y_pred_mean) ** 2 / (2 * y_pred_var)
+        )
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred = self(x_uid, x_mid)
-        loss = torch.sqrt(nn.MSELoss()(y_pred, y))
-        self.log("train_loss", loss, prog_bar=True)
+        y_pred_mean, y_pred_var = self(x_uid, x_mid)
+        loss = self.loss_nll(y_pred_mean, y_pred_var, y).mean()
+        self.log("train/nll_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred = self(x_uid, x_mid)
+        y_pred, _ = self(x_uid, x_mid)
         loss = nn.MSELoss()(
             torch.tensor(self.decode_acc(y_pred)),
             torch.tensor(self.decode_acc(y)),
         )
-        self.log("val_loss", loss, prog_bar=True)
+        self.log("val/rmse_loss", loss**0.5, prog_bar=True)
         return loss
 
     def test_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred = self(x_uid, x_mid)
+        y_pred, _ = self(x_uid, x_mid)
         loss = nn.MSELoss()(
             torch.tensor(self.decode_acc(y_pred)),
             torch.tensor(self.decode_acc(y)),
         )
-        self.log("test_loss", loss, prog_bar=True)
+        self.log("test/rmse_loss", loss**0.5, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
@@ -100,13 +112,13 @@ class DeltaModel(pl.LightningModule):
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            patience=1,
+            patience=2,
             factor=0.5,
         )
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
-            "monitor": "val_loss",
+            "monitor": "val/rmse_loss",
         }
 
     def decode_acc(self, x):
@@ -135,16 +147,21 @@ class DeltaModel(pl.LightningModule):
     def mid_classes(self) -> np.ndarray:
         return np.array(self.mid_le.classes_)
 
-    def predict_all(self) -> pd.DataFrame:
+    def predict_all(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         n_uid = len(self.uid_classes)
         n_mid = len(self.mid_classes)
         a = torch.cartesian_prod(torch.arange(n_uid), torch.arange(n_mid))
         uids = a[:, 0]
         mids = a[:, 1]
         accs = self.acc_qt.inverse_transform(
-            self(uids, mids).detach().numpy().reshape(-1, 1)
+            self(uids, mids)[0].detach().numpy().reshape(-1, 1)
+        ).reshape(n_uid, n_mid)
+        accs_var = self.acc_qt.inverse_transform(
+            self(uids, mids)[1].detach().numpy().reshape(-1, 1)
         ).reshape(n_uid, n_mid)
 
         return pd.DataFrame(
             accs, columns=self.mid_classes, index=self.uid_classes
+        ), pd.DataFrame(
+            accs_var, columns=self.mid_classes, index=self.uid_classes
         )
