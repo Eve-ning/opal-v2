@@ -1,24 +1,39 @@
+from pathlib import Path
+from typing import Literal
+
 import pandas as pd
 import pytorch_lightning as pl
 import torch
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
-from torch.utils.data import (
-    TensorDataset,
-    DataLoader,
-    random_split,
-    WeightedRandomSampler,
-)
+from torch.utils.data import TensorDataset, DataLoader
 
 from opal.utils import db_conn
 
 conn = db_conn.fn()
 
 
-def df_k(keys: int = 7) -> pd.DataFrame:
-    return pd.read_sql(
-        rf"SELECT * FROM osu_dataset WHERE `keys` = {keys}",
-        conn,
-    )
+def df_k(
+    keys: int = 7, sample: Literal["full", "1%", "10%"] = "full"
+) -> pd.DataFrame:
+    if sample == "full":
+        dataset = "osu_dataset"
+    elif sample == "1%":
+        cache_1_path = Path(__file__).parent / "osu_dataset_sample_1.csv"
+        if cache_1_path.exists():
+            return pd.read_csv(cache_1_path).query(f"keys == {keys}")
+        dataset = "osu_dataset_sample_1"
+    elif sample == "10%":
+        dataset = "osu_dataset_sample_10"
+    else:
+        raise ValueError(f"Invalid sample: {sample}")
+    return pd.read_sql(rf"SELECT * FROM {dataset} WHERE `keys` = {keys}", conn)
+
+
+def df_remove_low_support_prob(
+    df: pd.DataFrame, min_prob: float = 0.1
+) -> pd.DataFrame:
+    return df.loc[df["prob"].rank(pct=True) > min_prob]
 
 
 def df_remove_low_support_maps(
@@ -47,15 +62,14 @@ class OsuDataModule(pl.LightningDataModule):
         df: pd.DataFrame,
         batch_size: int = 256,
         n_train: int = 0.8,
-        min_user_plays: int = 50,
-        min_map_plays: int = 50,
+        min_prob: float = 0.1,
         n_acc_quantiles: int = 1000,
+        test_frac: float = 0.2,
     ):
         super().__init__()
         self.batch_size = batch_size
         self.n_train = n_train
-        self.min_user_plays = min_user_plays
-        self.min_map_plays = min_map_plays
+        self.min_prob = min_prob
         self.n_acc_quantiles = n_acc_quantiles
 
         self.uid_le = LabelEncoder()
@@ -66,32 +80,34 @@ class OsuDataModule(pl.LightningDataModule):
         )
         df["uid"] = df["username"] + "/" + df["year"].astype(str)
         df["mid"] = df["mapname"] + "/" + df["speed"].astype(str)
-        df = df_remove_low_support_maps(df, min_map_plays)
-        df = df_remove_low_support_users(df, min_user_plays)
+
+        # We fit the transform on the whole dataset, doesn't cause data leakage
+        df["uid"] = self.uid_le.fit_transform(df["uid"])
+        df["mid"] = self.mid_le.fit_transform(df["mid"])
+        df_train, df_test = train_test_split(
+            df, test_size=test_frac, random_state=42
+        )
+        df_train = df_remove_low_support_prob(df_train, min_prob)
+
+        # Fit the transform only on the training data to avoid data leakage
+        df_train["accuracy"] = self.acc_qt.fit_transform(
+            df_train["accuracy"].to_numpy().reshape(-1, 1)
+        )
+        df_test["accuracy"] = self.acc_qt.transform(
+            df_test["accuracy"].to_numpy().reshape(-1, 1)
+        )
+
+        self.ds_train = TensorDataset(
+            torch.tensor(df_train["uid"].to_numpy()),
+            torch.tensor(df_train["mid"].to_numpy()),
+            torch.tensor(df_train["accuracy"].to_numpy()).to(torch.float),
+        )
+        self.ds_test = TensorDataset(
+            torch.tensor(df_test["uid"].to_numpy()),
+            torch.tensor(df_test["mid"].to_numpy()),
+            torch.tensor(df_test["accuracy"].to_numpy()).to(torch.float),
+        )
         self.df = df
-        self.uid_enc = self.uid_le.fit_transform(df["uid"])
-        self.mid_enc = self.mid_le.fit_transform(df["mid"])
-        self.acc_tf = self.acc_qt.fit_transform(
-            df["accuracy"].to_numpy().reshape(-1, 1)
-        ).squeeze()
-
-        self.ds = TensorDataset(
-            torch.tensor(self.uid_enc),
-            torch.tensor(self.mid_enc),
-            torch.tensor(self.acc_tf).to(torch.float),
-        )
-
-        n_train = int(len(self.ds) * self.n_train)
-        self.train_ds, self.test_ds = random_split(
-            self.ds,
-            [n_train, len(self.ds) - n_train],
-            generator=torch.Generator().manual_seed(42),
-        )
-        self.train_p, self.test_p = random_split(
-            TensorDataset(torch.tensor(df["prob"])),
-            [n_train, len(self.ds) - n_train],
-            generator=torch.Generator().manual_seed(42),
-        )
 
     @property
     def n_uid(self):
@@ -113,42 +129,18 @@ class OsuDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_ds,
+            self.ds_train,
             batch_size=self.batch_size,
             drop_last=True,
             shuffle=True,
-            # sampler=WeightedRandomSampler(
-            #     self.train_p.dataset.tensors[0][self.train_p.indices],
-            #     len(self.train_p),
-            #     replacement=True,
-            # ),
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.test_ds,
-            batch_size=self.batch_size,
-            drop_last=True,
-            # sampler=WeightedRandomSampler(
-            #     self.test_p.dataset.tensors[0][self.test_p.indices],
-            #     len(self.test_p),
-            #     replacement=True,
-            # ),
+            self.ds_test, batch_size=self.batch_size, drop_last=True
         )
 
     def test_dataloader(self):
         return DataLoader(
-            self.test_ds,
-            batch_size=self.batch_size,
-            drop_last=True,
-            # sampler=WeightedRandomSampler(
-            #     self.test_p.dataset.tensors[0][self.test_p.indices],
-            #     len(self.test_p),
-            #     replacement=True,
-            # ),
+            self.ds_test, batch_size=self.batch_size, drop_last=True
         )
-
-
-# dm = OsuDataModule(df_k(7))
-# for i in dm.train_dataloader():
-#     break
