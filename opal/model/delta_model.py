@@ -32,28 +32,58 @@ class DeltaModel(pl.LightningModule):
         )
         n_uid = len(uid_le.classes_)
         n_mid = len(mid_le.classes_)
-        self.uid_rc_emb = nn.Embedding(n_uid, rc_emb)
-        self.mid_rc_emb = nn.Embedding(n_mid, rc_emb)
-        self.uid_ln_emb = nn.Embedding(n_uid, ln_emb)
-        self.mid_ln_emb = nn.Embedding(n_mid, ln_emb)
+
+        self.uid_rc_emb_mean = nn.Embedding(n_uid, rc_emb)
+        self.uid_rc_emb_var = nn.Embedding(n_uid, rc_emb)
+        self.mid_rc_emb_mean = nn.Embedding(n_mid, rc_emb)
+        self.mid_rc_emb_var = nn.Embedding(n_mid, rc_emb)
+        self.uid_ln_emb_mean = nn.Embedding(n_uid, ln_emb)
+        self.uid_ln_emb_var = nn.Embedding(n_uid, ln_emb)
+        self.mid_ln_emb_mean = nn.Embedding(n_mid, ln_emb)
+        self.mid_ln_emb_var = nn.Embedding(n_mid, ln_emb)
+
         self.rc_emb_bn = nn.BatchNorm1d(rc_emb, affine=False)
         self.ln_emb_bn = nn.BatchNorm1d(ln_emb, affine=False)
 
         self.delta_rc_to_acc = nn.Sequential(
-            PositiveLinear(rc_emb, 4), nn.Tanh(), PositiveLinear(4, 2)
+            PositiveLinear(rc_emb, 4),
+            nn.ReLU(),
+            PositiveLinear(4, 1),
+            nn.Hardsigmoid(),
         )
         self.delta_ln_to_acc = nn.Sequential(
-            PositiveLinear(ln_emb, 4), nn.Tanh(), PositiveLinear(4, 2)
+            PositiveLinear(ln_emb, 4),
+            nn.ReLU(),
+            PositiveLinear(4, 1),
+            nn.Hardsigmoid(),
         )
         self.save_hyperparameters()
 
     def forward(self, uid, mid):
         w_ln_ratio = self.ln_ratio_weights[mid]
 
-        uid_rc_emb = self.uid_rc_emb(uid)
-        mid_rc_emb = self.mid_rc_emb(mid)
-        uid_ln_emb = self.uid_ln_emb(uid)
-        mid_ln_emb = self.mid_ln_emb(mid)
+        uid_rc_emb_mean = self.uid_rc_emb_mean(uid)
+        uid_rc_emb_var = self.uid_rc_emb_var(uid)
+        mid_rc_emb_mean = self.mid_rc_emb_mean(mid)
+        mid_rc_emb_var = self.mid_rc_emb_var(mid)
+        uid_ln_emb_mean = self.uid_ln_emb_mean(uid)
+        uid_ln_emb_var = self.uid_ln_emb_var(uid)
+        mid_ln_emb_mean = self.mid_ln_emb_mean(mid)
+        mid_ln_emb_var = self.mid_ln_emb_var(mid)
+
+        # Perform Variational Inference
+        uid_rc_emb = uid_rc_emb_mean + torch.randn_like(
+            uid_rc_emb_var
+        ) * torch.exp(uid_rc_emb_var / 2)
+        mid_rc_emb = mid_rc_emb_mean + torch.randn_like(
+            mid_rc_emb_var
+        ) * torch.exp(mid_rc_emb_var / 2)
+        uid_ln_emb = uid_ln_emb_mean + torch.randn_like(
+            uid_ln_emb_var
+        ) * torch.exp(uid_ln_emb_var / 2)
+        mid_ln_emb = mid_ln_emb_mean + torch.randn_like(
+            mid_ln_emb_var
+        ) * torch.exp(mid_ln_emb_var / 2)
 
         rc_emb_delta = uid_rc_emb - mid_rc_emb
         ln_emb_delta = uid_ln_emb - mid_ln_emb
@@ -64,14 +94,14 @@ class DeltaModel(pl.LightningModule):
         rc_acc = self.delta_rc_to_acc(rc_emb)
         ln_acc = self.delta_ln_to_acc(ln_emb)
 
-        rc_acc_mean = hardsigmoid(rc_acc[:, 0])
-        rc_acc_var = softplus(rc_acc[:, 1])
-        ln_acc_mean = hardsigmoid(ln_acc[:, 0])
-        ln_acc_var = softplus(ln_acc[:, 1])
+        rc_acc_mean = rc_acc[:, 0]
+        # rc_acc_var = softplus(rc_acc[:, 1])
+        ln_acc_mean = ln_acc[:, 0]
+        # ln_acc_var = softplus(ln_acc[:, 1])
 
         y_mean = rc_acc_mean * (1 - w_ln_ratio) + ln_acc_mean * w_ln_ratio
-        y_var = rc_acc_var * (1 - w_ln_ratio) + ln_acc_var * w_ln_ratio
-        return y_mean, y_var
+        # y_var = rc_acc_var * (1 - w_ln_ratio) + ln_acc_var * w_ln_ratio
+        return y_mean  # , y_var
 
     @staticmethod
     def loss_nll(y_pred_mean, y_pred_var, y, eps=1e-10):
@@ -81,14 +111,17 @@ class DeltaModel(pl.LightningModule):
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred_mean, y_pred_var = self(x_uid, x_mid)
-        loss = self.loss_nll(y_pred_mean, y_pred_var, y).mean()
-        self.log("train/nll_loss", loss, prog_bar=True)
+        y_pred_mean = self(x_uid, x_mid)
+        # loss = self.loss_nll(y_pred_mean, y_pred_var, y).mean()
+        loss = nn.MSELoss()(y_pred_mean, y)
+        # self.log("train/nll_loss", loss, prog_bar=True)
+        self.log("train/mse_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred, _ = self(x_uid, x_mid)
+        # y_pred, _ = self(x_uid, x_mid)
+        y_pred = self(x_uid, x_mid)
         loss = nn.MSELoss()(
             torch.tensor(self.decode_acc(y_pred)),
             torch.tensor(self.decode_acc(y)),
@@ -98,7 +131,8 @@ class DeltaModel(pl.LightningModule):
 
     def test_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred, _ = self(x_uid, x_mid)
+        # y_pred, _ = self(x_uid, x_mid)
+        y_pred = self(x_uid, x_mid)
         loss = nn.MSELoss()(
             torch.tensor(self.decode_acc(y_pred)),
             torch.tensor(self.decode_acc(y)),
@@ -107,9 +141,7 @@ class DeltaModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.parameters(), lr=0.003  # , weight_decay=1e-5
-        )
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.003)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             patience=2,
@@ -118,7 +150,6 @@ class DeltaModel(pl.LightningModule):
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
-            "monitor": "val/rmse_loss",
         }
 
     def decode_acc(self, x):
