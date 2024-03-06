@@ -40,10 +40,10 @@ class DeltaModel(pl.LightningModule):
         self.ln_emb_bn = nn.BatchNorm1d(ln_emb, affine=False)
 
         self.delta_rc_to_acc = nn.Sequential(
-            PositiveLinear(rc_emb, 2),
+            PositiveLinear(rc_emb, 4), nn.Tanh(), PositiveLinear(4, 2)
         )
         self.delta_ln_to_acc = nn.Sequential(
-            PositiveLinear(ln_emb, 2),
+            PositiveLinear(ln_emb, 4), nn.Tanh(), PositiveLinear(4, 2)
         )
         self.save_hyperparameters()
 
