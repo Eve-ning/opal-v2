@@ -7,7 +7,6 @@ import torch
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import nn
-from torch.nn.functional import softplus, hardsigmoid
 
 from opal.model.positive_linear import PositiveLinear
 
@@ -45,21 +44,33 @@ class DeltaModel(pl.LightningModule):
         self.rc_emb_bn = nn.BatchNorm1d(rc_emb, affine=False)
         self.ln_emb_bn = nn.BatchNorm1d(ln_emb, affine=False)
 
-        self.delta_rc_to_acc = nn.Sequential(
+        self.delta_rc_to_acc_mean = nn.Sequential(
             PositiveLinear(rc_emb, 4),
             nn.ReLU(),
             PositiveLinear(4, 1),
             nn.Hardsigmoid(),
         )
-        self.delta_ln_to_acc = nn.Sequential(
+        self.delta_ln_to_acc_mean = nn.Sequential(
             PositiveLinear(ln_emb, 4),
             nn.ReLU(),
             PositiveLinear(4, 1),
             nn.Hardsigmoid(),
         )
+        self.var_rc_to_acc_var = nn.Sequential(
+            nn.Linear(rc_emb * 2, 4),
+            nn.ReLU(),
+            nn.Linear(4, 1),
+            nn.ReLU(),
+        )
+        self.var_ln_to_acc_var = nn.Sequential(
+            nn.Linear(ln_emb * 2, 4),
+            nn.ReLU(),
+            nn.Linear(4, 1),
+            nn.ReLU(),
+        )
         self.save_hyperparameters()
 
-    def forward(self, uid, mid):
+    def forward(self, uid, mid, freeze_random=False):
         w_ln_ratio = self.ln_ratio_weights[mid]
 
         uid_rc_emb_mean = self.uid_rc_emb_mean(uid)
@@ -72,56 +83,70 @@ class DeltaModel(pl.LightningModule):
         mid_ln_emb_var = self.mid_ln_emb_var(mid)
 
         # Perform Variational Inference
-        uid_rc_emb = uid_rc_emb_mean + torch.randn_like(
-            uid_rc_emb_var
-        ) * torch.exp(uid_rc_emb_var / 2)
-        mid_rc_emb = mid_rc_emb_mean + torch.randn_like(
-            mid_rc_emb_var
-        ) * torch.exp(mid_rc_emb_var / 2)
-        uid_ln_emb = uid_ln_emb_mean + torch.randn_like(
-            uid_ln_emb_var
-        ) * torch.exp(uid_ln_emb_var / 2)
-        mid_ln_emb = mid_ln_emb_mean + torch.randn_like(
-            mid_ln_emb_var
-        ) * torch.exp(mid_ln_emb_var / 2)
+        if freeze_random:
+            uid_rc_emb = uid_rc_emb_mean
+            mid_rc_emb = mid_rc_emb_mean
+            uid_ln_emb = uid_ln_emb_mean
+            mid_ln_emb = mid_ln_emb_mean
+        else:
+            uid_rc_emb = uid_rc_emb_mean + torch.randn_like(
+                uid_rc_emb_var
+            ) * torch.exp(uid_rc_emb_var / 2)
+            mid_rc_emb = mid_rc_emb_mean + torch.randn_like(
+                mid_rc_emb_var
+            ) * torch.exp(mid_rc_emb_var / 2)
+            uid_ln_emb = uid_ln_emb_mean + torch.randn_like(
+                uid_ln_emb_var
+            ) * torch.exp(uid_ln_emb_var / 2)
+            mid_ln_emb = mid_ln_emb_mean + torch.randn_like(
+                mid_ln_emb_var
+            ) * torch.exp(mid_ln_emb_var / 2)
 
         rc_emb_delta = uid_rc_emb - mid_rc_emb
         ln_emb_delta = uid_ln_emb - mid_ln_emb
 
-        rc_emb = self.rc_emb_bn(rc_emb_delta)
-        ln_emb = self.ln_emb_bn(ln_emb_delta)
+        rc_emb_delta = self.rc_emb_bn(rc_emb_delta)
+        ln_emb_delta = self.ln_emb_bn(ln_emb_delta)
 
-        rc_acc = self.delta_rc_to_acc(rc_emb)
-        ln_acc = self.delta_ln_to_acc(ln_emb)
+        rc_acc_mean = self.delta_rc_to_acc_mean(rc_emb_delta)
+        ln_acc_mean = self.delta_ln_to_acc_mean(ln_emb_delta)
 
-        rc_acc_mean = rc_acc[:, 0]
-        # rc_acc_var = softplus(rc_acc[:, 1])
-        ln_acc_mean = ln_acc[:, 0]
-        # ln_acc_var = softplus(ln_acc[:, 1])
+        rc_acc_mean = rc_acc_mean[:, 0]
+        ln_acc_mean = ln_acc_mean[:, 0]
+
+        rc_acc_var = self.var_rc_to_acc_var(
+            torch.cat((uid_rc_emb_var, mid_rc_emb_var), dim=1)
+        )
+        ln_acc_var = self.var_ln_to_acc_var(
+            torch.cat((uid_ln_emb_var, mid_ln_emb_var), dim=1)
+        )
+
+        rc_acc_var = rc_acc_var[:, 0]
+        ln_acc_var = ln_acc_var[:, 0]
 
         y_mean = rc_acc_mean * (1 - w_ln_ratio) + ln_acc_mean * w_ln_ratio
-        # y_var = rc_acc_var * (1 - w_ln_ratio) + ln_acc_var * w_ln_ratio
-        return y_mean  # , y_var
+        y_var = rc_acc_var * (1 - w_ln_ratio) + ln_acc_var * w_ln_ratio
+        return y_mean, y_var
 
     @staticmethod
-    def loss_nll(y_pred_mean, y_pred_var, y, eps=1e-10):
+    def loss_nll(y_pred_mean, y_pred_var, y, eps=1e-3):
         return (torch.log(y_pred_var + eps) / 2) + (
-            (y - y_pred_mean) ** 2 / (2 * y_pred_var)
+            (y - y_pred_mean) ** 2 / (2 * y_pred_var + eps)
         )
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        y_pred_mean = self(x_uid, x_mid)
-        # loss = self.loss_nll(y_pred_mean, y_pred_var, y).mean()
-        loss = nn.MSELoss()(y_pred_mean, y)
-        # self.log("train/nll_loss", loss, prog_bar=True)
-        self.log("train/mse_loss", loss, prog_bar=True)
+        y_pred_mean, y_pred_var = self(x_uid, x_mid)
+        loss = self.loss_nll(y_pred_mean, y_pred_var, y).mean()
+        # loss = nn.MSELoss()(y_pred_mean, y)
+        self.log("train/nll_loss", loss, prog_bar=True)
+        # self.log("train/mse_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        # y_pred, _ = self(x_uid, x_mid)
-        y_pred = self(x_uid, x_mid)
+        y_pred, _ = self(x_uid, x_mid, freeze_random=True)
+        # y_pred = self(x_uid, x_mid, freeze_random=True)
         loss = nn.MSELoss()(
             torch.tensor(self.decode_acc(y_pred)),
             torch.tensor(self.decode_acc(y)),
@@ -131,8 +156,8 @@ class DeltaModel(pl.LightningModule):
 
     def test_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         x_uid, x_mid, y = batch
-        # y_pred, _ = self(x_uid, x_mid)
-        y_pred = self(x_uid, x_mid)
+        y_pred, _ = self(x_uid, x_mid, freeze_random=True)
+        # y_pred = self(x_uid, x_mid, freeze_random=True)
         loss = nn.MSELoss()(
             torch.tensor(self.decode_acc(y_pred)),
             torch.tensor(self.decode_acc(y)),
@@ -150,6 +175,7 @@ class DeltaModel(pl.LightningModule):
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
+            "monitor": "val/rmse_loss",
         }
 
     def decode_acc(self, x):
