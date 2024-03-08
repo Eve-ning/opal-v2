@@ -209,11 +209,14 @@ class DeltaModel(pl.LightningModule):
     def mid_classes(self) -> np.ndarray:
         return np.array(self.le_mid.classes_)
 
-    def predict_all(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def predict_all(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Predicts the accuracy for all user-beatmap pairs
 
         Returns:
-            DataFrames of the mean and variance of the accuracy respectively.
+            3 DataFrames: Mean, Lower Bound, and Upper Bound.
+            The lower and upper bounds are one standard deviation away from
+             the mean.
+
         """
         n_uid = len(self.uid_classes)
         n_mid = len(self.mid_classes)
@@ -223,15 +226,30 @@ class DeltaModel(pl.LightningModule):
         x_uid = cart[:, 0]
         x_mid = cart[:, 1]
 
-        y_mean = self.qt_acc.inverse_transform(
-            self(x_uid, x_mid)[0].detach().numpy().reshape(-1, 1)
+        y_mean, y_var = self(x_uid, x_mid)
+        y_std = torch.sqrt(y_var)
+
+        y_mean_decode = self.qt_acc.inverse_transform(
+            y_mean.detach().numpy().reshape(-1, 1)
         ).reshape(n_uid, n_mid)
-        y_var = self.qt_acc.inverse_transform(
-            self(x_uid, x_mid)[1].detach().numpy().reshape(-1, 1)
+        y_mean_upper_decode = self.qt_acc.inverse_transform(
+            (y_mean + y_std).detach().numpy().reshape(-1, 1)
+        ).reshape(n_uid, n_mid)
+        y_mean_lower_decode = self.qt_acc.inverse_transform(
+            (y_mean - y_std).detach().numpy().reshape(-1, 1)
         ).reshape(n_uid, n_mid)
 
-        return pd.DataFrame(
-            y_mean, columns=self.mid_classes, index=self.uid_classes
-        ), pd.DataFrame(
-            y_var, columns=self.mid_classes, index=self.uid_classes
+        df_mean = pd.DataFrame(
+            y_mean_decode, columns=self.mid_classes, index=self.uid_classes
         )
+        df_mean_upper = pd.DataFrame(
+            y_mean_upper_decode,
+            columns=self.mid_classes,
+            index=self.uid_classes,
+        )
+        df_mean_lower = pd.DataFrame(
+            y_mean_lower_decode,
+            columns=self.mid_classes,
+            index=self.uid_classes,
+        )
+        return df_mean, df_mean_lower, df_mean_upper
