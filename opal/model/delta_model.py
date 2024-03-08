@@ -22,6 +22,8 @@ class DeltaModel(pl.LightningModule):
         n_ln_emb: int = 1,
         n_delta_neurons: int = 4,
         lr: float = 0.003,
+        l1_loss_weight: float = 0.001,
+        l2_loss_weight: float = 0,
     ):
         """Delta Model for Osu!Mania Score Prediction
 
@@ -42,6 +44,8 @@ class DeltaModel(pl.LightningModule):
             requires_grad=False,
         )
         self.lr = lr
+        self.l1_loss_weight = l1_loss_weight
+        self.l2_loss_weight = l2_loss_weight
 
         n_uid = len(le_uid.classes_)
         n_mid = len(le_mid.classes_)
@@ -150,7 +154,17 @@ class DeltaModel(pl.LightningModule):
             (loss := self.step(batch, self.loss_nll)),
             prog_bar=True,
         )
-        return loss
+        # Add l1 regularization to the embeddings
+        l1 = (
+            self.emb_uid_rc.weight.abs().sum()
+            + self.emb_mid_rc.weight.abs().sum()
+            + self.emb_uid_ln.weight.abs().sum()
+            + self.emb_mid_ln.weight.abs().sum()
+        )
+        self.log("train/l1_loss", l1, prog_bar=True)
+        l2 = l1**2
+        self.log("train/l2_loss", l2)
+        return loss + self.l1_loss_weight * l1 + self.l2_loss_weight * l2
 
     def validation_step(
         self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int
