@@ -111,7 +111,7 @@ if __name__ == "__main__":
                         "RC": exp.model.emb_mid_rc.weight.detach()
                         .mean(dim=1)
                         .numpy(),
-                        "LN": exp.model.emb_mid_rc.weight.detach()
+                        "LN": exp.model.emb_mid_ln.weight.detach()
                         .mean(dim=1)
                         .numpy(),
                     }
