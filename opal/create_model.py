@@ -32,7 +32,7 @@ def create_model(
 ):
     dm = OsuDataModule(
         df=df_k(keys, sample=sample_set),
-        min_prob=min_prob,
+        p_remove_low_support_prob=min_prob,
         n_acc_quantiles=n_acc_quantiles,
     )
 

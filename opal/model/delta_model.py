@@ -5,7 +5,7 @@ import pandas as pd
 import pytorch_lightning as pl
 import torch
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
-from torch import nn
+from torch import nn, Tensor, tensor
 from torch.nn.functional import softplus, hardsigmoid
 
 from opal.model.positive_linear import PositiveLinear
@@ -38,7 +38,7 @@ class DeltaModel(pl.LightningModule):
         self.le_mid = le_mid
         self.qt_acc = qt_acc
         self.w_ln_ratio = nn.Parameter(
-            torch.tensor(w_ln_ratio, dtype=torch.float),
+            tensor(w_ln_ratio, dtype=torch.float),
             requires_grad=False,
         )
         self.lr = lr
@@ -110,9 +110,9 @@ class DeltaModel(pl.LightningModule):
 
     @staticmethod
     def loss_nll(
-        mean: torch.Tensor,
-        var: torch.Tensor,
-        target: torch.Tensor,
+        mean: Tensor,
+        var: Tensor,
+        target: Tensor,
         eps: float = 1e-10,
     ):
         """Negative Log Likelihood Loss for Gaussian Distribution
@@ -128,33 +128,22 @@ class DeltaModel(pl.LightningModule):
             + ((target - mean) ** 2 / (2 * var + eps))
         ).mean()
 
-    def decoded_rmse(
-        self,
-        mean: torch.Tensor,
-        var: torch.Tensor,  # noqa
-        target: torch.Tensor,
-    ):
+    def decoded_rmse(self, mean: Tensor, var: Tensor, target: Tensor):  # noqa
         return (
             nn.MSELoss()(
-                torch.tensor(self.decode_acc(mean)),
-                torch.tensor(self.decode_acc(target)),
+                tensor(self.decode_acc(mean)),
+                tensor(self.decode_acc(target)),
             )
             ** 0.5
         )
 
-    def step(
-        self,
-        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-        loss_fn: Any,
-    ):
+    def step(self, batch: tuple[Tensor, Tensor, Tensor], loss_fn: Any):
         x_uid, x_mid, y = batch
         y_pred_mean, y_pred_var = self(x_uid, x_mid)
         return loss_fn(y_pred_mean, y_pred_var, y)
 
     def training_step(
-        self,
-        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-        batch_idx: int,
+        self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int
     ):
         self.log(
             "train/nll_loss",
@@ -164,9 +153,7 @@ class DeltaModel(pl.LightningModule):
         return loss
 
     def validation_step(
-        self,
-        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-        batch_idx: int,
+        self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int
     ):
         self.log(
             "val/rmse_loss",
@@ -175,11 +162,7 @@ class DeltaModel(pl.LightningModule):
         )
         return loss
 
-    def test_step(
-        self,
-        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ):
+    def test_step(self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int):
         self.log(
             "test/rmse_loss",
             (loss := self.step(batch, self.decoded_rmse)),

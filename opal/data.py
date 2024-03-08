@@ -5,9 +5,9 @@ from typing import Literal
 
 import pandas as pd
 import pytorch_lightning as pl
-import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
+from torch import tensor
 from torch.utils.data import TensorDataset, DataLoader
 
 from opal.utils import db_conn
@@ -77,15 +77,13 @@ class OsuDataModule(pl.LightningDataModule):
         self,
         df: pd.DataFrame,
         batch_size: int = 256,
-        n_train: int = 0.8,
-        min_prob: float = 0.1,
+        p_test: float = 0.2,
+        p_remove_low_support_prob: float = 0.1,
         n_acc_quantiles: int = 1000,
-        test_frac: float = 0.2,
     ):
         super().__init__()
         self.batch_size = batch_size
-        self.n_train = n_train
-        self.min_prob = min_prob
+        self.min_prob = p_remove_low_support_prob
         self.n_acc_quantiles = n_acc_quantiles
 
         self.uid_le = LabelEncoder()
@@ -100,7 +98,7 @@ class OsuDataModule(pl.LightningDataModule):
         #   interested in low support maps and users
         #   This can artificially inflate the accuracy of the model, however,
         #   during deployment, we're not supporting these predictions anyway.
-        df = df_remove_low_support_prob(df, min_prob)
+        df = df_remove_low_support_prob(df, p_remove_low_support_prob)
 
         df = df.assign(
             uid=lambda x: x["username"] + "/" + x["year"].astype(str),
@@ -113,7 +111,7 @@ class OsuDataModule(pl.LightningDataModule):
             mid=lambda x: self.mid_le.fit_transform(x["mid"]),
         )
         df_train, df_test = train_test_split(
-            df, test_size=test_frac, random_state=42
+            df, test_size=p_test, random_state=42
         )
 
         # Fit the transform only on the training data to avoid data leakage
@@ -125,14 +123,14 @@ class OsuDataModule(pl.LightningDataModule):
         )
 
         self.ds_train = TensorDataset(
-            torch.tensor(df_train["uid"].to_numpy()),
-            torch.tensor(df_train["mid"].to_numpy()),
-            torch.tensor(df_train["accuracy"].to_numpy()).to(torch.float),
+            tensor(df_train["uid"].to_numpy()),
+            tensor(df_train["mid"].to_numpy()),
+            tensor(df_train["accuracy"].to_numpy()).to(float),
         )
         self.ds_test = TensorDataset(
-            torch.tensor(df_test["uid"].to_numpy()),
-            torch.tensor(df_test["mid"].to_numpy()),
-            torch.tensor(df_test["accuracy"].to_numpy()).to(torch.float),
+            tensor(df_test["uid"].to_numpy()),
+            tensor(df_test["mid"].to_numpy()),
+            tensor(df_test["accuracy"].to_numpy()).to(float),
         )
         self.df = df
 
