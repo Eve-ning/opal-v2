@@ -17,10 +17,6 @@ from opal.data import OsuDataModule, df_k
 from opal.model.delta_model import DeltaModel
 
 
-def train(trainer: pl.Trainer, dm: OsuDataModule, m: DeltaModel):
-    trainer.fit(m, datamodule=dm)
-
-
 def create_model(
     n_epochs: int = 20,
     n_keys: int | None = 7,
@@ -37,9 +33,9 @@ def create_model(
     )
 
     m = DeltaModel(
-        le_uid=dm.uid_le,
-        le_mid=dm.mid_le,
-        qt_acc=dm.acc_qt,
+        le_uid=dm.le_uid,
+        le_mid=dm.le_mid,
+        qt_acc=dm.qt_acc,
         w_ln_ratio=dm.ln_ratio_weights,
         n_rc_emb=n_rc_emb,
         n_ln_emb=n_ln_emb,
@@ -60,7 +56,7 @@ def create_model(
             name="Dev Model 1D Emb VI Full",
         ),
     )
-    train(trainer, dm, m)
+    trainer.fit(m, datamodule=dm)
 
     return dm, m
 

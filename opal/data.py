@@ -86,9 +86,9 @@ class OsuDataModule(pl.LightningDataModule):
         self.min_prob = p_remove_low_support_prob
         self.n_acc_quantiles = n_acc_quantiles
 
-        self.uid_le = LabelEncoder()
-        self.mid_le = LabelEncoder()
-        self.acc_qt = QuantileTransformer(
+        self.le_uid = LabelEncoder()
+        self.le_mid = LabelEncoder()
+        self.qt_acc = QuantileTransformer(
             n_quantiles=self.n_acc_quantiles,
             output_distribution="uniform",
         )
@@ -107,18 +107,18 @@ class OsuDataModule(pl.LightningDataModule):
 
         # We fit the transform on the whole dataset, doesn't cause data leakage
         df = df.assign(
-            uid=lambda x: self.uid_le.fit_transform(x["uid"]),
-            mid=lambda x: self.mid_le.fit_transform(x["mid"]),
+            uid=lambda x: self.le_uid.fit_transform(x["uid"]),
+            mid=lambda x: self.le_mid.fit_transform(x["mid"]),
         )
         df_train, df_test = train_test_split(
             df, test_size=p_test, random_state=42
         )
 
         # Fit the transform only on the training data to avoid data leakage
-        df_train["accuracy"] = self.acc_qt.fit_transform(
+        df_train["accuracy"] = self.qt_acc.fit_transform(
             df_train["accuracy"].to_numpy().reshape(-1, 1)
         )
-        df_test["accuracy"] = self.acc_qt.transform(
+        df_test["accuracy"] = self.qt_acc.transform(
             df_test["accuracy"].to_numpy().reshape(-1, 1)
         )
 
@@ -136,11 +136,11 @@ class OsuDataModule(pl.LightningDataModule):
 
     @property
     def n_uid(self):
-        return len(self.uid_le.classes_)
+        return len(self.le_uid.classes_)
 
     @property
     def n_mid(self):
-        return len(self.mid_le.classes_)
+        return len(self.le_mid.classes_)
 
     @property
     def ln_ratio_weights(self):
@@ -149,7 +149,7 @@ class OsuDataModule(pl.LightningDataModule):
                 [self.df["mapname"] + "/" + self.df["speed"].astype(str)]
             )["ln_ratio"]
             .groupby(level=0)
-            .first()[self.mid_le.classes_]
+            .first()[self.le_mid.classes_]
         )
 
     def train_dataloader(self):

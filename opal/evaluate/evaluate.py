@@ -14,12 +14,12 @@ def prediction_error(m: LightningModule, dm: OsuDataModule) -> pd.DataFrame:
 
     x_uids = torch.cat(x_uids)
     x_mids = torch.cat(x_mids)
-    x_uids_labels = dm.uid_le.inverse_transform(x_uids.detach().numpy())
-    x_mids_labels = dm.mid_le.inverse_transform(x_mids.detach().numpy())
-    y_accs = dm.acc_qt.inverse_transform(
+    x_uids_labels = dm.le_uid.inverse_transform(x_uids.detach().numpy())
+    x_mids_labels = dm.le_mid.inverse_transform(x_mids.detach().numpy())
+    y_accs = dm.qt_acc.inverse_transform(
         torch.cat(y_accs).detach().numpy().reshape(-1, 1)
     ).squeeze()
-    y_pred = dm.acc_qt.inverse_transform(
+    y_pred = dm.qt_acc.inverse_transform(
         m(x_uids, x_mids).detach().numpy().reshape(-1, 1)
     ).squeeze()
 
