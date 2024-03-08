@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Literal
 
@@ -14,20 +16,34 @@ conn = db_conn.fn()
 
 
 def df_k(
-    keys: int = 7, sample: Literal["full", "1%", "10%"] = "full"
+    keys: int | None = 7,
+    sample: Literal["full", "1%", "10%", "1%_cached"] = "full",
 ) -> pd.DataFrame:
     if sample == "full":
         dataset = "osu_dataset"
     elif sample == "1%":
-        cache_1_path = Path(__file__).parent / "osu_dataset_sample_1.csv"
-        if cache_1_path.exists():
-            return pd.read_csv(cache_1_path).query(f"keys == {keys}")
         dataset = "osu_dataset_sample_1"
     elif sample == "10%":
         dataset = "osu_dataset_sample_10"
+    elif sample == "1%_cached":
+        pass
     else:
         raise ValueError(f"Invalid sample: {sample}")
-    return pd.read_sql(rf"SELECT * FROM {dataset} WHERE `keys` = {keys}", conn)
+
+    if sample == "1%_cached":
+        cache_1_path = Path(__file__).parent / "osu_dataset_sample_1.csv"
+        assert cache_1_path.exists(), "Cache 1% does not exist"
+        df = pd.read_csv(cache_1_path)
+        df = df.loc[df["keys"] == keys] if keys else df
+    else:
+        df = pd.read_sql(
+            rf"SELECT * FROM {dataset}" rf" WHERE `keys` = {keys}"
+            if keys
+            else "",
+            conn,
+        )
+
+    return df
 
 
 def df_remove_low_support_prob(
@@ -78,16 +94,27 @@ class OsuDataModule(pl.LightningDataModule):
             n_quantiles=self.n_acc_quantiles,
             output_distribution="uniform",
         )
-        df["uid"] = df["username"] + "/" + df["year"].astype(str)
-        df["mid"] = df["mapname"] + "/" + df["speed"].astype(str)
+
+        # Remove low support maps and users
+        #   We do this regardless of train/validation as we're simply not
+        #   interested in low support maps and users
+        #   This can artificially inflate the accuracy of the model, however,
+        #   during deployment, we're not supporting these predictions anyway.
+        df = df_remove_low_support_prob(df, min_prob)
+
+        df = df.assign(
+            uid=lambda x: x["username"] + "/" + x["year"].astype(str),
+            mid=lambda x: x["mapname"] + "/" + x["speed"].astype(str),
+        )
 
         # We fit the transform on the whole dataset, doesn't cause data leakage
-        df["uid"] = self.uid_le.fit_transform(df["uid"])
-        df["mid"] = self.mid_le.fit_transform(df["mid"])
+        df = df.assign(
+            uid=lambda x: self.uid_le.fit_transform(x["uid"]),
+            mid=lambda x: self.mid_le.fit_transform(x["mid"]),
+        )
         df_train, df_test = train_test_split(
             df, test_size=test_frac, random_state=42
         )
-        df_train = df_remove_low_support_prob(df_train, min_prob)
 
         # Fit the transform only on the training data to avoid data leakage
         df_train["accuracy"] = self.acc_qt.fit_transform(
