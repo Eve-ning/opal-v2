@@ -1,12 +1,16 @@
-import torch.nn.functional as F
-import torch
 from torch import nn
+from torch.nn.functional import softplus, linear
 
 
 class PositiveLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True):
-        super().__init__(in_features, out_features, bias)
-        self.fn = torch.nn.Softplus()
+    """Linear layer with positive weights
+
+    Notes:
+        The positive linear layer ensures the estimated function is
+        monotonic increasing. This is done by simply hijacking the
+        forward method of the Linear layer and applying a softplus
+        activation to the weights.
+    """
 
     def forward(self, x):
-        return F.linear(x, self.fn(self.weight), self.bias)
+        return linear(x, softplus(self.weight), self.bias)
