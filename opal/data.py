@@ -77,10 +77,28 @@ class OsuDataModule(pl.LightningDataModule):
         self,
         df: pd.DataFrame,
         batch_size: int = 256,
-        p_test: float = 0.2,
+        p_test: float | None = 0.2,
         p_remove_low_support_prob: float = 0.1,
         n_acc_quantiles: int = 1000,
     ):
+        """DataModule for the osu! dataset
+
+        Notes:
+            The dataset is preprocessed to remove low support maps and users.
+            The accuracy is transformed to a uniform distribution using a
+            quantile transformer.
+
+        Args:
+            df: osu! dataset. See opal.data
+            batch_size: Batch size
+            p_test: The proportion of the data to use as test data.
+                If None or 0, the entire dataset is used for training.
+            p_remove_low_support_prob: The proportion of the data to remove
+                based on the probability of the map and user.
+                This is done to remove low support maps and users.
+            n_acc_quantiles: The number of quantiles to use for the
+                quantile transformer for the accuracy.
+        """
         super().__init__()
         self.batch_size = batch_size
         self.min_prob = p_remove_low_support_prob
@@ -110,8 +128,10 @@ class OsuDataModule(pl.LightningDataModule):
             uid=lambda x: self.le_uid.fit_transform(x["uid"]),
             mid=lambda x: self.le_mid.fit_transform(x["mid"]),
         )
-        df_train, df_test = train_test_split(
-            df, test_size=p_test, random_state=42
+        df_train, df_test = (
+            train_test_split(df, test_size=p_test, random_state=42)
+            if p_test
+            else (df, df)
         )
 
         # Fit the transform only on the training data to avoid data leakage
