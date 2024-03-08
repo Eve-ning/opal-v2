@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Literal
 
 import pandas as pd
@@ -21,12 +23,12 @@ def train(trainer: pl.Trainer, dm: OsuDataModule, m: DeltaModel):
 
 def create_model(
     epochs: int = 20,
-    keys: int = 7,
-    sample_set: Literal["full", "1%", "10%"] = "1%",
+    keys: int | None = 7,
+    sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full",
     min_prob: float = 0.1,
-    n_acc_quantiles: int = 100,
-    rc_emb: int = 2,
-    ln_emb: int = 2,
+    n_acc_quantiles: int = 10000,
+    rc_emb: int = 1,
+    ln_emb: int = 1,
 ):
     dm = OsuDataModule(
         df=df_k(keys, sample=sample_set),
@@ -35,12 +37,12 @@ def create_model(
     )
 
     m = DeltaModel(
-        uid_le=dm.uid_le,
-        mid_le=dm.mid_le,
-        acc_qt=dm.acc_qt,
-        ln_ratio_weights=dm.ln_ratio_weights,
-        rc_emb=rc_emb,
-        ln_emb=ln_emb,
+        le_uid=dm.uid_le,
+        le_mid=dm.mid_le,
+        qt_acc=dm.acc_qt,
+        w_ln_ratio=dm.ln_ratio_weights,
+        n_rc_emb=rc_emb,
+        n_ln_emb=ln_emb,
     )
 
     trainer = pl.Trainer(
@@ -55,12 +57,38 @@ def create_model(
         logger=WandbLogger(
             entity="evening",
             project="opal",
-            name="Dev Model 3D Emb",
+            name="Dev Model 1D Emb VI Full",
         ),
     )
     train(trainer, dm, m)
 
     return dm, m
 
-if __name__ == "__main__":
-    create_model()
+
+torch.set_float32_matmul_precision("medium")
+dm, m = create_model(epochs=25, sample_set="full", keys=7, min_prob=0.005)
+# %%
+wandb.log(
+    {
+        "model/uid_emb_mean": wandb.Table(
+            dataframe=pd.DataFrame(
+                {
+                    "User": dm.uid_le.classes_,
+                    "RC": m.emb_uid_rc.weight.detach().mean(dim=1).numpy(),
+                    "LN": m.uid_ln_mean.weight.detach().mean(dim=1).numpy(),
+                },
+            )
+        ),
+        "model/mid_emb_mean": wandb.Table(
+            dataframe=pd.DataFrame(
+                {
+                    "Map": dm.mid_le.classes_,
+                    "RC": m.mid_rc_mean.weight.detach().mean(dim=1).numpy(),
+                    "LN": m.mid_ln_mean.weight.detach().mean(dim=1).numpy(),
+                }
+            )
+        ),
+    }
+)
+# %%
+wandb.finish()

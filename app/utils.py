@@ -16,16 +16,16 @@ def model_emb(
     _m: DeltaModel,
     model_id: str,
 ):
-    w_uid_rc = _m.uid_rc_emb.weight.detach().numpy().squeeze()
-    w_uid_ln = _m.uid_ln_emb.weight.detach().numpy().squeeze()
-    w_mid_rc = _m.mid_rc_emb.weight.detach().numpy().squeeze()
-    w_mid_ln = _m.mid_ln_emb.weight.detach().numpy().squeeze()
-    ln_ratio = _m.ln_ratio_weights.detach().numpy().squeeze()
+    w_uid_rc = _m.emb_uid_rc.weight.detach().numpy().squeeze()
+    w_uid_ln = _m.emb_uid_ln.weight.detach().numpy().squeeze()
+    w_mid_rc = _m.emb_mid_rc.weight.detach().numpy().squeeze()
+    w_mid_ln = _m.emb_mid_ln.weight.detach().numpy().squeeze()
+    ln_ratio = _m.w_ln_ratio.detach().numpy().squeeze()
     df_mid = pd.DataFrame(
-        [_m.mid_le.classes_, w_mid_rc, w_mid_ln, ln_ratio]
+        [_m.le_mid.classes_, w_mid_rc, w_mid_ln, ln_ratio]
     ).T.rename(columns={0: "mid", 1: "RC", 2: "LN", 3: "ln_ratio"})
     df_mid[["name", "speed"]] = df_mid["mid"].str.split("/", expand=True)
-    df_uid = pd.DataFrame([_m.uid_le.classes_, w_uid_rc, w_uid_ln]).T.rename(
+    df_uid = pd.DataFrame([_m.le_uid.classes_, w_uid_rc, w_uid_ln]).T.rename(
         columns={0: "uid", 1: "RC", 2: "LN"}
     )
     df_uid[["name", "year"]] = df_uid["uid"].str.split("/", expand=True)

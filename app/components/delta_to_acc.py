@@ -6,6 +6,7 @@ import torch
 import plotly.graph_objects as go
 import streamlit as st
 from scipy.interpolate import interp1d
+from torch.nn.functional import hardsigmoid
 
 if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel
@@ -13,21 +14,21 @@ if TYPE_CHECKING:
 
 def st_delta_to_acc(m: "DeltaModel"):
     x_delta = torch.linspace(-4, 4, 100)
-    rc_dim = m.uid_rc_emb.weight.shape[1]
-    ln_dim = m.uid_ln_emb.weight.shape[1]
+    rc_dim = m.emb_uid_rc.weight.shape[1]
+    ln_dim = m.emb_uid_ln.weight.shape[1]
     y_rc = (
-        m.delta_rc_to_acc(x_delta.repeat((rc_dim, 1)).T)
+        hardsigmoid(m.delta_rc_to_acc(x_delta.repeat((rc_dim, 1)).T))
         .squeeze()
         .detach()
-        .numpy()
+        .numpy()[:, 1]
     )
     y_ln = (
-        m.delta_ln_to_acc(x_delta.repeat((ln_dim, 1)).T)
+        hardsigmoid(m.delta_ln_to_acc(x_delta.repeat((ln_dim, 1)).T))
         .squeeze()
         .detach()
-        .numpy()
+        .numpy()[:, 1]
     )
-
+    print(y_rc.shape)
     y_rc_inverse_func = interp1d(
         y_rc,
         x_delta,
@@ -55,7 +56,6 @@ def st_delta_to_acc(m: "DeltaModel"):
                     xaxis_title="Delta",
                     yaxis_title="Accuracy",
                     legend_title="Type",
-                    # limits
                     yaxis_range=[0, 1],
                 )
             ),

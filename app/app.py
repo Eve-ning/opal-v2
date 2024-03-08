@@ -18,7 +18,6 @@ from components.rank import (
 from components.player_embeddings import st_player_emb
 from utils import model_emb, predict_all, mapspeed_to_str
 import streamlit as st
-import pandas as pd
 
 st.title("Dan Analysis")
 
@@ -63,53 +62,53 @@ with st.expander("Map Analysis"):
     st_map_ranks(df_accs_mid)
     st_map_rank_hist(df_accs_mid, mapname, mapspeed_str)
 # %%
-
-
-from opal.data import OsuDataModule, df_k
-
-df_raw = OsuDataModule(df_k(7)).df
-# %%
-df_piv = (
-    df_raw.groupby(["mid", "uid"])
-    .agg({"accuracy": "mean"})
-    .reset_index()
-    .pivot(index="uid", columns="mid", values="accuracy")
-)
-
-# %%
-df_unc = (
-    (df_accs - df_piv)
-    .abs()
-    .quantile(0.85, axis=0)
-    .rename("uncertainty")
-    .to_frame()
-    .query("index.str.endswith('/0')")
-    .assign(uncertainty_pct=lambda x: x.rank(pct=True))
-)
-
-# %%
-
-
-threshold = st.slider("Threshold", 0.8, 1.0, 0.925, 0.01)
-df_accs_thres: pd.DataFrame = (
-    (df_accs >= threshold)
-    .mean(axis=0)
-    .rename("thres")
-    .rename_axis("mapname")
-    .to_frame()
-    .query("mapname.str.endswith('/0')")
-)
-
-df_sr = (
-    df_raw.query("mid.str.endswith('/0')")
-    .groupby("mid")
-    .agg({"sr": "first"})
-    .merge(df_accs_thres, right_index=True, left_index=True)
-    .merge(df_unc, right_index=True, left_index=True)
-    .assign(
-        sr_rank=lambda x: x["sr"].rank(ascending=False),
-        thres_rank=lambda x: x["thres"].rank(ascending=True),
-        delta_rank=lambda x: x["sr_rank"] - x["thres_rank"],
-    )
-)
-st.dataframe(df_sr)
+# from opal.data import OsuDataModule, df_k
+#
+# df_raw = OsuDataModule(df_k(7)).df
+# # %%
+# df_piv = (
+#     df_raw.groupby(["mid", "uid"])
+#     .agg({"accuracy": "mean"})
+#     .reset_index()
+#     .pivot(index="uid", columns="mid", values="accuracy")
+# ).to_csv("df_piv.csv.gz", index=False, compression="gzip")
+# # %%
+# df_raw[["mid", "uid", "accuracy"]].to_csv(
+#     "df_raw.csv.gz", index=False, compression="gzip"
+# )
+# # %%
+# df_unc = (
+#     (df_accs - df_piv)
+#     .abs()
+#     .quantile(0.85, axis=0)
+#     .rename("uncertainty")
+#     .to_frame()
+#     .query("index.str.endswith('/0')")
+#     .assign(uncertainty_pct=lambda x: x.rank(pct=True))
+# )
+#
+# # %%
+# threshold = st.slider("Threshold", 0.8, 1.0, 0.925, 0.01)
+# df_accs_thres: pd.DataFrame = (
+#     (df_accs >= threshold)
+#     .mean(axis=0)
+#     .rename("thres")
+#     .rename_axis("mapname")
+#     .to_frame()
+#     .query("mapname.str.endswith('/0')")
+# )
+#
+# df_sr = (
+#     df_raw.query("mid.str.endswith('/0')")
+#     .groupby("mid")
+#     .agg({"sr": "first"})
+#     .merge(df_accs_thres, right_index=True, left_index=True)
+#     .merge(df_unc, right_index=True, left_index=True)
+#     .assign(
+#         sr_rank=lambda x: x["sr"].rank(ascending=False),
+#         thres_rank=lambda x: x["thres"].rank(ascending=True),
+#         delta_rank=lambda x: x["sr_rank"] - x["thres_rank"],
+#     )
+# )
+# st.dataframe(df_sr)
+# # %%

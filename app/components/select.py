@@ -41,7 +41,7 @@ def load_model(path: Path) -> DeltaModel:
 def st_select_model(model_search_pth: Path) -> tuple[DeltaModel, str]:
     model_path = st.selectbox(
         "Model Path",
-        format_func=lambda x: x.parts[-3],
+        # format_func=lambda x: x.parts[-3],
         options=list(p for p in model_search_pth.glob("**/*.ckpt")),
         placeholder="Select a model",
     )
