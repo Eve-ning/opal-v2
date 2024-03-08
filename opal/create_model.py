@@ -31,6 +31,8 @@ class Experiment:
     run_name: str = "Dev Model"
     n_epochs: int = 25
     n_patience_early_stopping: int = 2
+    l1_loss_weight: float = 0.001
+    l2_loss_weight: float = 0
 
     @cached_property
     def datamodule(self):
@@ -50,6 +52,8 @@ class Experiment:
             w_ln_ratio=self.datamodule.ln_ratio_weights,
             n_rc_emb=self.n_rc_emb,
             n_ln_emb=self.n_ln_emb,
+            l1_loss_weight=self.l1_loss_weight,
+            l2_loss_weight=self.l2_loss_weight,
         )
 
     @cached_property
@@ -81,12 +85,14 @@ class Experiment:
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     exp = Experiment(
-        run_name="Test run new architecture",
+        run_name="L1 1e-7 L2 1e-14",
         n_epochs=25,
-        sample_set="1%_cached",
+        sample_set="full",
         n_keys=7,
         p_remove_low_support_prob=0.005,
-        p_test=0,
+        p_test=0.10,
+        l1_loss_weight=1e-7,
+        l2_loss_weight=1e-14,
     )
     exp.fit()
     wandb.log(
@@ -119,5 +125,4 @@ if __name__ == "__main__":
             ),
         }
     )
-    # %%
     wandb.finish()
