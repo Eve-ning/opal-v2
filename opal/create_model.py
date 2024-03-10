@@ -35,9 +35,13 @@ class Experiment:
     l2_loss_weight: float = 0
 
     @cached_property
+    def df(self):
+        return df_k(self.n_keys, sample=self.sample_set)
+
+    @cached_property
     def datamodule(self):
         return OsuDataModule(
-            df=df_k(self.n_keys, sample=self.sample_set),
+            df=self.df,
             p_remove_low_support_prob=self.p_remove_low_support_prob,
             n_acc_quantiles=self.n_acc_quantiles,
             p_test=self.p_test,
