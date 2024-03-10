@@ -26,10 +26,10 @@ def st_player_rank(df: pd.DataFrame, n_uid: int):
 
 
 @st.cache_data()
-def st_player_rank_hist(df: pd.DataFrame, username: str, useryear: str):
+def st_player_rank_hist(df: pd.DataFrame, username: str):
     st.plotly_chart(
         px.histogram(x=df).update_layout(
-            title=f"Rank Distribution of {username} in {useryear}",
+            title=f"Rank Distribution of {username}",
             xaxis_title="Rank",
             yaxis_title="Count",
         ),

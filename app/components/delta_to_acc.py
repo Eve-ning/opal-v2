@@ -20,13 +20,13 @@ def st_delta_to_acc(m: "DeltaModel"):
         hardsigmoid(m.delta_rc_to_acc(x_delta.repeat((rc_dim, 1)).T))
         .squeeze()
         .detach()
-        .numpy()[:, 1]
+        .numpy()[:, 0]
     )
     y_ln = (
         hardsigmoid(m.delta_ln_to_acc(x_delta.repeat((ln_dim, 1)).T))
         .squeeze()
         .detach()
-        .numpy()[:, 1]
+        .numpy()[:, 0]
     )
     print(y_rc.shape)
     y_rc_inverse_func = interp1d(

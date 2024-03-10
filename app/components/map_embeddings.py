@@ -33,8 +33,6 @@ def st_map_emb(df):
         "in this case, we have RC and LN."
     )
     dans_only = st.checkbox("Dans Only", value=True)
-
-    df = df.reset_index()
     if dans_only:
         df = df[
             (
@@ -43,10 +41,10 @@ def st_map_emb(df):
             )
             & (df["speed"] == "0")
         ]
-    rc = np.mean(df["RC"].tolist(), axis=1)
-    ln = np.mean(df["LN"].tolist(), axis=1)
-    ln_ratio = df["ln_ratio"]
+    rc, ln, ln_ratio = df["RC"], df["LN"], df["ln_ratio"]
     name = df["name"] + " " + df["speed"]
+
+    # Extract the dan number and color
     name_text = (
         (
             name.str.extract(r"\[\b(\w+)\b")

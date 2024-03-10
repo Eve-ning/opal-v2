@@ -29,19 +29,15 @@ def model_emb(
         columns={0: "uid", 1: "RC", 2: "LN"}
     )
     df_uid[["name", "year"]] = df_uid["uid"].str.split("/", expand=True)
-    return (
-        df_mid.drop(columns=["mid"]),
-        df_uid.drop(columns=["uid"]),
-    )
+    return df_mid.drop(columns=["mid"]), df_uid.drop(columns=["uid"])
 
 
 @st.cache_data()
 def predict_all(
     _m: DeltaModel,
     model_id: str,
-) -> pd.DataFrame:
-    accs = _m.predict_all()
-    return pd.DataFrame(accs, columns=_m.mid_classes, index=_m.uid_classes)
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    return _m.predict_all()
 
 
 def mapspeed_to_str(mapspeed):
