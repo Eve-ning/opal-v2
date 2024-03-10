@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from typing import Literal
 
@@ -15,6 +16,7 @@ from opal.utils import db_conn
 conn = db_conn.fn()
 
 
+@cache
 def df_k(
     keys: int | None = 7,
     sample: Literal["full", "1%", "10%", "1%_cached"] = "full",
