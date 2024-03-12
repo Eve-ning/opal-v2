@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 import pandas as pd
 import pytorch_lightning as pl
@@ -13,12 +13,12 @@ from torch.utils.data import TensorDataset, DataLoader
 
 from opal.utils import db_conn
 
-conn = db_conn.fn()
+conn = db_conn()
 
 
 @cache
 def df_k(
-    keys: int | None = 7,
+    keys: Sequence[int] | int | None = (7,),
     sample: Literal["full", "1%", "10%", "1%_cached"] = "full",
 ) -> pd.DataFrame:
     if sample == "full":
@@ -32,46 +32,33 @@ def df_k(
     else:
         raise ValueError(f"Invalid sample: {sample}")
 
+    # Make `keys` compatible with SQL
+    keys = (keys,) if isinstance(keys, int) else keys
+
     if sample == "1%_cached":
         cache_1_path = Path(__file__).parent / "osu_dataset_sample_1.csv"
         assert cache_1_path.exists(), "Cache 1% does not exist"
         df = pd.read_csv(cache_1_path)
-        df = df.loc[df["keys"] == keys] if keys else df
+        df = df.loc[df["keys"].isin(keys)] if keys else df
     else:
-        df = pd.read_sql(
-            rf"SELECT * FROM {dataset}" rf" WHERE `keys` = {keys}"
-            if keys
-            else "",
-            conn,
-        )
+        if keys:
+            df = pd.read_sql(
+                rf"SELECT * FROM {dataset} WHERE `keys` IN {keys}", conn
+            )
+        else:
+            df = pd.read_sql(f"SELECT * FROM {dataset}", conn)
 
     return df
 
 
-def df_remove_low_support_prob(
-    df: pd.DataFrame, min_prob: float = 0.1
+def df_remove_low_support(
+    df: pd.DataFrame,
+    n_min_map_support: int = 10,
+    n_min_user_support: int = 10,
 ) -> pd.DataFrame:
-    return df.loc[df["prob"].rank(pct=True) > min_prob]
-
-
-def df_remove_low_support_maps(
-    df: pd.DataFrame, min_map_plays: int = 50
-) -> pd.DataFrame:
-    return (
-        df.groupby("mid")
-        .filter(lambda x: len(x) >= min_map_plays)
-        .reset_index(drop=True)
-    )
-
-
-def df_remove_low_support_users(
-    df: pd.DataFrame, min_user_plays: int = 50
-) -> pd.DataFrame:
-    return (
-        df.groupby("uid")
-        .filter(lambda x: len(x) >= min_user_plays)
-        .reset_index(drop=True)
-    )
+    return df.loc[
+        (df["n_mid"] > n_min_map_support) & (df["n_uid"] > n_min_user_support)
+    ]
 
 
 class OsuDataModule(pl.LightningDataModule):
@@ -80,7 +67,9 @@ class OsuDataModule(pl.LightningDataModule):
         df: pd.DataFrame,
         batch_size: int = 256,
         p_test: float | None = 0.2,
-        p_remove_low_support_prob: float = 0.1,
+        # q_remove_low_quantile_support: float = 0.1,
+        n_min_user_support: int = 10,
+        n_min_map_support: int = 10,
         n_acc_quantiles: int = 1000,
     ):
         """DataModule for the osu! dataset
@@ -95,15 +84,18 @@ class OsuDataModule(pl.LightningDataModule):
             batch_size: Batch size
             p_test: The proportion of the data to use as test data.
                 If None or 0, the entire dataset is used for training.
-            p_remove_low_support_prob: The proportion of the data to remove
-                based on the probability of the map and user.
-                This is done to remove low support maps and users.
+            # q_remove_low_quantile_support: The proportion of the data to remove
+            #     based on the probability of the map and user.
+            #     This is done to remove low support maps and users.
+            n_min_user_support: The minimum number of plays a user must have
+                to be included in the dataset.
+            n_min_map_support: The minimum number of plays a map must have
+                to be included in the dataset.
             n_acc_quantiles: The number of quantiles to use for the
                 quantile transformer for the accuracy.
         """
         super().__init__()
         self.batch_size = batch_size
-        self.min_prob = p_remove_low_support_prob
         self.n_acc_quantiles = n_acc_quantiles
 
         self.le_uid = LabelEncoder()
@@ -113,16 +105,34 @@ class OsuDataModule(pl.LightningDataModule):
             output_distribution="uniform",
         )
 
+        # Note: This implicitly overwrites the uid, and mid in favour of
+        # the encoded uid and mid
+        df = df.assign(
+            uid=lambda x: x["username"] + "/" + x["year"].astype(str),
+            mid=lambda x: x["mapname"] + "/" + x["speed"].astype(str),
+        )
+
         # Remove low support maps and users
         #   We do this regardless of train/validation as we're simply not
         #   interested in low support maps and users
         #   This can artificially inflate the accuracy of the model, however,
         #   during deployment, we're not supporting these predictions anyway.
-        df = df_remove_low_support_prob(df, p_remove_low_support_prob)
 
-        df = df.assign(
-            uid=lambda x: x["username"] + "/" + x["year"].astype(str),
-            mid=lambda x: x["mapname"] + "/" + x["speed"].astype(str),
+        # We firstly calculate the quantile support for each map and user
+        # Support is the number of entries for a map or user. So a popular
+        # map or an active user will have a high support.
+        # The quantile support is just the quantile of the support.
+        df = df.merge(
+            df["mid"].value_counts().rename("n_mid"),
+            on="mid",
+        ).merge(
+            df["uid"].value_counts().rename("n_uid"),
+            on="uid",
+        )
+        df = df_remove_low_support(
+            df,
+            n_min_map_support=n_min_map_support,
+            n_min_user_support=n_min_user_support,
         )
 
         # We fit the transform on the whole dataset, doesn't cause data leakage
