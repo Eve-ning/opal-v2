@@ -45,4 +45,4 @@ def st_select_model(model_search_pth: Path) -> tuple[DeltaModel, str]:
         options=list(p for p in model_search_pth.glob("**/*.ckpt")),
         placeholder="Select a model",
     )
-    return load_model(model_search_pth / model_path), model_path.parts[-3]
+    return load_model(model_search_pth / model_path), model_path
