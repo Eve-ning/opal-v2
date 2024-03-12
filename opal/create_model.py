@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Literal
+from typing import Literal, Sequence
 
+import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
@@ -21,10 +22,11 @@ from opal.model.delta_model import DeltaModel
 
 @dataclass
 class Experiment:
-    n_keys: int | None = 7
+    n_keys: Sequence[int] | int | None = (7,)
     sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full"
     p_test: float = 0
-    p_remove_low_support_prob: float = 0.1
+    n_min_map_support: int = 10
+    n_min_user_support: int = 10
     n_acc_quantiles: int = 10000
     n_rc_emb: int = 1
     n_ln_emb: int = 1
@@ -42,7 +44,8 @@ class Experiment:
     def datamodule(self):
         return OsuDataModule(
             df=self.df,
-            p_remove_low_support_prob=self.p_remove_low_support_prob,
+            n_min_map_support=self.n_min_map_support,
+            n_min_user_support=self.n_min_user_support,
             n_acc_quantiles=self.n_acc_quantiles,
             p_test=self.p_test,
         )
@@ -89,28 +92,31 @@ class Experiment:
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     exp = Experiment(
-        run_name="L1 1e-7 L2 1e-14",
+        run_name="Baseline L1 1e-7 L2 1e-14 Min Support 10",
         n_epochs=25,
         sample_set="full",
-        n_keys=7,
-        p_remove_low_support_prob=0.005,
+        n_keys=(4, 7),
+        n_min_map_support=10,
+        n_min_user_support=10,
         p_test=0.10,
+        n_ln_emb=1,
+        n_rc_emb=1,
         l1_loss_weight=1e-7,
         l2_loss_weight=1e-14,
     )
     exp.fit()
+
+    def get_weight(w):
+        return w.weight.detach().cpu().mean(dim=1).numpy()
+
     wandb.log(
         {
             "model/uid_emb_mean": wandb.Table(
                 dataframe=pd.DataFrame(
                     {
                         "User": exp.model.uid_classes,
-                        "RC": exp.model.emb_uid_rc.weight.detach()
-                        .mean(dim=1)
-                        .numpy(),
-                        "LN": exp.model.emb_uid_ln.weight.detach()
-                        .mean(dim=1)
-                        .numpy(),
+                        "RC": get_weight(exp.model.emb_uid_rc),
+                        "LN": get_weight(exp.model.emb_uid_ln),
                     },
                 )
             ),
@@ -118,12 +124,26 @@ if __name__ == "__main__":
                 dataframe=pd.DataFrame(
                     {
                         "Map": exp.model.mid_classes,
-                        "RC": exp.model.emb_mid_rc.weight.detach()
-                        .mean(dim=1)
-                        .numpy(),
-                        "LN": exp.model.emb_mid_ln.weight.detach()
-                        .mean(dim=1)
-                        .numpy(),
+                        "RC": get_weight(exp.model.emb_mid_rc),
+                        "LN": get_weight(exp.model.emb_mid_ln),
+                    }
+                )
+            ),
+            "model/uid_emb_mean_exp": wandb.Table(
+                dataframe=pd.DataFrame(
+                    {
+                        "User": exp.model.uid_classes,
+                        "RC": np.exp(get_weight(exp.model.emb_uid_rc)),
+                        "LN": np.exp(get_weight(exp.model.emb_uid_ln)),
+                    },
+                )
+            ),
+            "model/mid_emb_mean_exp": wandb.Table(
+                dataframe=pd.DataFrame(
+                    {
+                        "Map": exp.model.mid_classes,
+                        "RC": np.exp(get_weight(exp.model.emb_mid_rc)),
+                        "LN": np.exp(get_weight(exp.model.emb_mid_ln)),
                     }
                 )
             ),
