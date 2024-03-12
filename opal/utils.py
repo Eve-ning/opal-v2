@@ -1,7 +1,10 @@
-from prefect import task
+import logging
+
 from sqlalchemy import create_engine
 
+logger = logging.getLogger(__name__)
 
-@task(name="Create DB Connection")
+
 def db_conn():
+    logger.info(f"Connecting to root@localhost:3308/osu")
     return create_engine("mysql+pymysql://root@localhost:3308/osu")
