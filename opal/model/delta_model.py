@@ -156,10 +156,10 @@ class DeltaModel(pl.LightningModule):
         )
         # Add l1 regularization to the embeddings
         l1 = (
-            self.emb_uid_rc.weight.abs().sum()
-            + self.emb_mid_rc.weight.abs().sum()
-            + self.emb_uid_ln.weight.abs().sum()
-            + self.emb_mid_ln.weight.abs().sum()
+            torch.exp(self.emb_uid_rc.weight).sum()
+            + torch.exp(self.emb_mid_rc.weight).sum()
+            + torch.exp(self.emb_uid_ln.weight).sum()
+            + torch.exp(self.emb_mid_ln.weight).sum()
         )
         self.log("train/l1_loss", l1, prog_bar=True)
         l2 = l1**2
