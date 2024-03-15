@@ -24,13 +24,11 @@ from opal.model.delta_model import DeltaModel
 class Experiment:
     n_keys: Sequence[int] | int | None = (7,)
     sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full"
+    batch_size: int = 2**10
     p_test: float = 0
-    n_min_map_support: int = 10
-    n_min_user_support: int = 10
+    n_min_support: int = 10
     n_acc_quantiles: int = 10000
-    n_rc_emb: int = 1
-    n_ln_emb: int = 1
-    run_name: str = "Dev Model"
+    n_emb: int = 1
     n_epochs: int = 25
     n_patience_early_stopping: int = 2
     l1_loss_weight: float = 0.001
@@ -44,8 +42,9 @@ class Experiment:
     def datamodule(self):
         return OsuDataModule(
             df=self.df,
-            n_min_map_support=self.n_min_map_support,
-            n_min_user_support=self.n_min_user_support,
+            batch_size=self.batch_size,
+            n_min_map_support=self.n_min_support,
+            n_min_user_support=self.n_min_support,
             n_acc_quantiles=self.n_acc_quantiles,
             p_test=self.p_test,
         )
@@ -57,8 +56,8 @@ class Experiment:
             le_mid=self.datamodule.le_mid,
             qt_acc=self.datamodule.qt_acc,
             w_ln_ratio=self.datamodule.ln_ratio_weights,
-            n_rc_emb=self.n_rc_emb,
-            n_ln_emb=self.n_ln_emb,
+            n_rc_emb=self.n_emb,
+            n_ln_emb=self.n_emb,
             l1_loss_weight=self.l1_loss_weight,
             l2_loss_weight=self.l2_loss_weight,
         )
@@ -70,18 +69,23 @@ class Experiment:
             accelerator="gpu",
             default_root_dir="checkpoints",
             callbacks=[
-                ModelCheckpoint(
-                    monitor="val/rmse_loss", save_top_k=1, mode="min"
-                ),
+                ModelCheckpoint(monitor="val/rmse_loss"),
                 EarlyStopping(
                     monitor="val/rmse_loss",
                     patience=self.n_patience_early_stopping,
-                    mode="min",
                 ),
                 LearningRateMonitor(),
             ],
             logger=WandbLogger(
-                entity="evening", project="opal", name=self.run_name
+                entity="evening",
+                project="opal",
+                # Gets only the dataclass fields
+                # Note: __dict__ will include properties
+                config={
+                    k: exp.__getattribute__(k)
+                    for k in exp.__dataclass_fields__.keys()
+                },
+                tags=["dev"],
             ),
         )
 
@@ -92,15 +96,12 @@ class Experiment:
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     exp = Experiment(
-        run_name="Baseline L1 1e-7 L2 1e-14 Min Support 10",
         n_epochs=25,
         sample_set="full",
         n_keys=(4, 7),
-        n_min_map_support=10,
-        n_min_user_support=10,
+        n_min_support=50,
         p_test=0.10,
-        n_ln_emb=1,
-        n_rc_emb=1,
+        n_emb=3,
         l1_loss_weight=1e-7,
         l2_loss_weight=1e-14,
     )
