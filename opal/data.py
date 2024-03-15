@@ -108,8 +108,16 @@ class OsuDataModule(pl.LightningDataModule):
         # Note: This implicitly overwrites the uid, and mid in favour of
         # the encoded uid and mid
         df = df.assign(
-            uid=lambda x: x["username"] + "/" + x["year"].astype(str),
-            mid=lambda x: x["mapname"] + "/" + x["speed"].astype(str),
+            uid=lambda x: x["username"]
+            + "/"
+            + x["year"].astype(str)
+            + "/"
+            + x["keys"].astype(str),
+            mid=lambda x: x["mapname"]
+            + "/"
+            + x["speed"].astype(str)
+            + "/"
+            + x["keys"].astype(str),
         )
 
         # Remove low support maps and users
@@ -178,7 +186,13 @@ class OsuDataModule(pl.LightningDataModule):
     def ln_ratio_weights(self):
         return (
             self.df.set_index(
-                [self.df["mapname"] + "/" + self.df["speed"].astype(str)]
+                [
+                    self.df["mapname"]
+                    + "/"
+                    + self.df["speed"].astype(str)
+                    + "/"
+                    + self.df["keys"].astype(str)
+                ]
             )["ln_ratio"]
             .groupby(level=0)
             .first()[self.le_mid.classes_]
