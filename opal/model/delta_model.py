@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -135,8 +137,8 @@ class DeltaModel(pl.LightningModule):
     def decoded_rmse(self, mean: Tensor, var: Tensor, target: Tensor):  # noqa
         return (
             nn.MSELoss()(
-                tensor(self.decode_acc(mean)),
-                tensor(self.decode_acc(target)),
+                tensor(self.decode_acc(mean.cpu().reshape(-1, 1))),
+                tensor(self.decode_acc(target.cpu().reshape(-1, 1))),
             )
             ** 0.5
         )
@@ -197,24 +199,6 @@ class DeltaModel(pl.LightningModule):
             "monitor": "val/rmse_loss",
         }
 
-    def decode_acc(self, x):
-        return self.qt_acc.inverse_transform(x.cpu().reshape(-1, 1))
-
-    def encode_acc(self, x):
-        return self.qt_acc.transform(x.cpu().reshape(-1, 1)).squeeze()
-
-    def decode_uid(self, x):
-        return self.le_uid.inverse_transform(x)
-
-    def decode_mid(self, x):
-        return self.le_mid.inverse_transform(x)
-
-    def encode_uid(self, x):
-        return self.le_uid.transform(x)
-
-    def encode_mid(self, x):
-        return self.le_mid.transform(x)
-
     @property
     def uid_classes(self) -> np.ndarray:
         return np.array(self.le_uid.classes_)
@@ -223,47 +207,154 @@ class DeltaModel(pl.LightningModule):
     def mid_classes(self) -> np.ndarray:
         return np.array(self.le_mid.classes_)
 
-    def predict_all(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """Predicts the accuracy for all user-beatmap pairs
+    def get_embeddings(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        uid_rc = self.emb_uid_rc.weight.detach().numpy()
+        uid_ln = self.emb_uid_ln.weight.detach().numpy()
+        mid_rc = self.emb_mid_rc.weight.detach().numpy()
+        mid_ln = self.emb_mid_ln.weight.detach().numpy()
+
+        df_emb_uid = pd.DataFrame(
+            {
+                **{f"RC{k}": emb for k, emb in enumerate(uid_rc.T)},
+                **{f"LN{k}": emb for k, emb in enumerate(uid_ln.T)},
+            },
+            index=self.multi_index_uid(),
+        )
+
+        df_emb_mid = pd.DataFrame(
+            {
+                **{f"RC{k}": emb for k, emb in enumerate(mid_rc.T)},
+                **{f"LN{k}": emb for k, emb in enumerate(mid_ln.T)},
+            },
+            index=self.multi_index_mid(),
+        )
+
+        return df_emb_uid, df_emb_mid
+
+    def predict_user(self, username: str | list[str]) -> pd.DataFrame:
+        """Predicts the accuracy for all beatmaps for a given user
+
+        Args:
+            username: User Name
 
         Returns:
-            3 DataFrames: Mean, Lower Bound, and Upper Bound.
+            DataFrame: Mean, Lower Bound, and Upper Bound.
             The lower and upper bounds are one standard deviation away from
              the mean.
 
         """
-        n_uid = len(self.uid_classes)
+        username = [username] if isinstance(username, str) else username
+        uid = self.encode_uid(username)
         n_mid = len(self.mid_classes)
-
-        # Construct the Cartesian Product of User and Beatmap IDs
-        cart = torch.cartesian_prod(torch.arange(n_uid), torch.arange(n_mid))
-        x_uid = cart[:, 0]
-        x_mid = cart[:, 1]
+        x_uid = tensor(uid).repeat(n_mid)
+        x_mid = tensor(range(n_mid))
 
         y_mean, y_var = self(x_uid, x_mid)
         y_std = torch.sqrt(y_var)
 
-        y_mean_decode = self.qt_acc.inverse_transform(
+        y_mean_decode = self.decode_acc(
             y_mean.detach().numpy().reshape(-1, 1)
-        ).reshape(n_uid, n_mid)
-        y_mean_upper_decode = self.qt_acc.inverse_transform(
+        )[:, 0]
+        y_mean_upper_decode = self.decode_acc(
             (y_mean + y_std).detach().numpy().reshape(-1, 1)
-        ).reshape(n_uid, n_mid)
-        y_mean_lower_decode = self.qt_acc.inverse_transform(
+        )[:, 0]
+        y_mean_lower_decode = self.decode_acc(
             (y_mean - y_std).detach().numpy().reshape(-1, 1)
-        ).reshape(n_uid, n_mid)
+        )[:, 0]
 
         df_mean = pd.DataFrame(
-            y_mean_decode, columns=self.mid_classes, index=self.uid_classes
+            {
+                "Mean": y_mean_decode,
+                "Lower Bound": y_mean_lower_decode,
+                "Upper Bound": y_mean_upper_decode,
+            },
+            index=self.multi_index_mid(),
         )
-        df_mean_upper = pd.DataFrame(
-            y_mean_upper_decode,
-            columns=self.mid_classes,
-            index=self.uid_classes,
+        return df_mean
+
+    def predict_map(self, mapname: str | list[str]) -> pd.DataFrame:
+        """Predicts the accuracy for all users for a given beatmap
+
+        Args:
+            mapname: Map Name
+            speed: Map Speed
+
+        Returns:
+            DataFrame: Mean, Lower Bound, and Upper Bound.
+            The lower and upper bounds are one standard deviation away from
+             the mean.
+
+        """
+
+        mapname = [mapname] if isinstance(mapname, str) else mapname
+        mid = self.encode_mid(mapname)
+        n_uid = len(self.uid_classes)
+        x_uid = tensor(range(n_uid))
+        x_mid = tensor(mid).repeat(n_uid)
+
+        y_mean, y_var = self(x_uid, x_mid)
+        y_std = torch.sqrt(y_var)
+
+        y_mean_decode = self.decode_acc(
+            y_mean.detach().numpy().reshape(-1, 1)
+        )[:, 0]
+        y_mean_upper_decode = self.decode_acc(
+            (y_mean + y_std).detach().numpy().reshape(-1, 1)
+        )[:, 0]
+        y_mean_lower_decode = self.decode_acc(
+            (y_mean - y_std).detach().numpy().reshape(-1, 1)
+        )[:, 0]
+
+        df_mean = pd.DataFrame(
+            {
+                "Mean": y_mean_decode,
+                "Lower Bound": y_mean_lower_decode,
+                "Upper Bound": y_mean_upper_decode,
+            },
+            index=self.multi_index_uid(),
         )
-        df_mean_lower = pd.DataFrame(
-            y_mean_lower_decode,
-            columns=self.mid_classes,
-            index=self.uid_classes,
+        return df_mean
+
+    def multi_index_uid(self):
+        return pd.MultiIndex.from_frame(
+            pd.Series(self.uid_classes)
+            .str.split("/", expand=True)
+            .rename(columns={0: "User Name", 1: "Year", 2: "Keys"})
+            .astype({"Year": int, "Keys": float})
+            # We cast to float, then int to handle strings with decimals
+            .astype({"Keys": int})
         )
-        return df_mean, df_mean_lower, df_mean_upper
+
+    def multi_index_mid(self):
+        return pd.MultiIndex.from_frame(
+            pd.Series(self.mid_classes)
+            .str.split("/", expand=True)
+            .rename(columns={0: "Map Name", 1: "Speed", 2: "Keys"})
+            .astype({"Speed": int, "Keys": float})
+            # We cast to float, then int to handle strings with decimals
+            .astype({"Keys": int})
+        )
+
+    def decode_acc(self, x):
+        x = [x] if isinstance(x, (int, float)) else x
+        return self.qt_acc.inverse_transform(x)
+
+    def encode_acc(self, x):
+        x = [x] if isinstance(x, (int, float)) else x
+        return self.qt_acc.transform(x)
+
+    def decode_uid(self, x):
+        x = [x] if isinstance(x, (int, float)) else x
+        return self.le_uid.inverse_transform(x)
+
+    def decode_mid(self, x):
+        x = [x] if isinstance(x, (int, float)) else x
+        return self.le_mid.inverse_transform(x)
+
+    def encode_uid(self, x):
+        x = [x] if isinstance(x, str) else x
+        return self.le_uid.transform(x)
+
+    def encode_mid(self, x):
+        x = [x] if isinstance(x, str) else x
+        return self.le_mid.transform(x)
