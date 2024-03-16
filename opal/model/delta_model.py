@@ -20,6 +20,8 @@ class DeltaModel(pl.LightningModule):
         le_mid: LabelEncoder,
         qt_acc: QuantileTransformer,
         w_ln_ratio: list,
+        n_uid_support: list,
+        n_mid_support: list,
         n_rc_emb: int = 1,
         n_ln_emb: int = 1,
         n_delta_neurons: int = 4,
@@ -34,8 +36,15 @@ class DeltaModel(pl.LightningModule):
             le_mid: Label Encoder for Beatmap IDs
             qt_acc: Quantile Transformer for Accuracy
             w_ln_ratio: Weights for LN Ratio
-            n_rc_emb: Number of Embeddings for Relative Coordinates
-            n_ln_emb: Number of Embeddings for Local Normals
+            n_uid_support: Number of Beatmaps each User has played
+            n_mid_support: Number of Users each Beatmap has scores on
+            n_rc_emb: Number of Embedding Neurons for RC
+            n_ln_emb: Number of Embedding Neurons for LN
+            n_delta_neurons: Number of Neurons in the Delta to Accuracy Layers
+            lr: Learning Rate
+            l1_loss_weight: L1 Loss Weight
+            l2_loss_weight: L2 Loss Weight
+
         """
         super().__init__()
         self.le_uid = le_uid
@@ -43,6 +52,14 @@ class DeltaModel(pl.LightningModule):
         self.qt_acc = qt_acc
         self.w_ln_ratio = nn.Parameter(
             tensor(w_ln_ratio, dtype=torch.float),
+            requires_grad=False,
+        )
+        self.n_uid_support = nn.Parameter(
+            tensor(n_uid_support, dtype=torch.int),
+            requires_grad=False,
+        )
+        self.n_mid_support = nn.Parameter(
+            tensor(n_mid_support, dtype=torch.int),
             requires_grad=False,
         )
         self.lr = lr

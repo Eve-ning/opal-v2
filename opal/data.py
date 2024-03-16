@@ -185,7 +185,7 @@ class OsuDataModule(pl.LightningDataModule):
         return len(self.le_mid.classes_)
 
     @property
-    def ln_ratio_weights(self):
+    def ln_ratio_weights(self) -> list[float]:
         return (
             self.df.set_index(
                 [
@@ -198,7 +198,16 @@ class OsuDataModule(pl.LightningDataModule):
             )["ln_ratio"]
             .groupby(level=0)
             .first()[self.le_mid.classes_]
+            .to_list()
         )
+
+    @property
+    def n_uid_support(self) -> list[int]:
+        return self.df["mid"].value_counts()[self.le_mid.classes_].to_list()
+
+    @property
+    def n_mid_support(self) -> list[int]:
+        return self.df["uid"].value_counts()[self.le_uid.classes_].to_list()
 
     def train_dataloader(self):
         return DataLoader(

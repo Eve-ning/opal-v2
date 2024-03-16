@@ -56,6 +56,8 @@ class Experiment:
             le_mid=self.datamodule.le_mid,
             qt_acc=self.datamodule.qt_acc,
             w_ln_ratio=self.datamodule.ln_ratio_weights,
+            n_uid_support=self.datamodule.n_uid_support,
+            n_mid_support=self.datamodule.n_mid_support,
             n_rc_emb=self.n_emb,
             n_ln_emb=self.n_emb,
             l1_loss_weight=self.l1_loss_weight,
