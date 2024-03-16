@@ -67,7 +67,6 @@ class Experiment:
         return pl.Trainer(
             max_epochs=self.n_epochs,
             accelerator="gpu",
-            default_root_dir="checkpoints",
             callbacks=[
                 ModelCheckpoint(monitor="val/rmse_loss"),
                 EarlyStopping(
@@ -92,62 +91,83 @@ class Experiment:
     def fit(self):
         self.trainer.fit(self.model, datamodule=self.datamodule)
 
+    def wandb_log_weights(self):
+        def get_weight(w):
+            return w.weight.detach().cpu().mean(dim=1).numpy()
+
+        wandb.log(
+            {
+                "model/uid_emb_mean": wandb.Table(
+                    dataframe=pd.DataFrame(
+                        {
+                            "User": self.model.uid_classes,
+                            "RC": get_weight(self.model.emb_uid_rc),
+                            "LN": get_weight(self.model.emb_uid_ln),
+                        },
+                    )
+                ),
+                "model/mid_emb_mean": wandb.Table(
+                    dataframe=pd.DataFrame(
+                        {
+                            "Map": self.model.mid_classes,
+                            "RC": get_weight(self.model.emb_mid_rc),
+                            "LN": get_weight(self.model.emb_mid_ln),
+                        }
+                    )
+                ),
+                "model/uid_emb_mean_self": wandb.Table(
+                    dataframe=pd.DataFrame(
+                        {
+                            "User": self.model.uid_classes,
+                            "RC": np.exp(get_weight(self.model.emb_uid_rc)),
+                            "LN": np.exp(get_weight(self.model.emb_uid_ln)),
+                        },
+                    )
+                ),
+                "model/mid_emb_mean_self": wandb.Table(
+                    dataframe=pd.DataFrame(
+                        {
+                            "Map": self.model.mid_classes,
+                            "RC": np.exp(get_weight(self.model.emb_mid_rc)),
+                            "LN": np.exp(get_weight(self.model.emb_mid_ln)),
+                        }
+                    )
+                ),
+            }
+        )
+
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
-    exp = Experiment(
-        n_epochs=25,
-        sample_set="full",
-        n_keys=(4, 7),
-        n_min_support=50,
-        p_test=0.10,
-        n_emb=3,
-        l1_loss_weight=1e-7,
-        l2_loss_weight=1e-14,
+    n_epochs = 25
+    sample_set = "full"
+    n_min_support = 50
+    p_test = 0.10
+    n_emb = 1
+    l1_loss_weight = 1e-7
+    l2_loss_weight = 1e-14
+
+    exp_fn = lambda k: Experiment(
+        n_epochs=n_epochs,
+        sample_set=sample_set,
+        n_keys=k,
+        n_min_support=n_min_support,
+        p_test=p_test,
+        n_emb=n_emb,
+        l1_loss_weight=l1_loss_weight,
+        l2_loss_weight=l2_loss_weight,
     )
+
+    exp = exp_fn(7)
     exp.fit()
-
-    def get_weight(w):
-        return w.weight.detach().cpu().mean(dim=1).numpy()
-
-    wandb.log(
-        {
-            "model/uid_emb_mean": wandb.Table(
-                dataframe=pd.DataFrame(
-                    {
-                        "User": exp.model.uid_classes,
-                        "RC": get_weight(exp.model.emb_uid_rc),
-                        "LN": get_weight(exp.model.emb_uid_ln),
-                    },
-                )
-            ),
-            "model/mid_emb_mean": wandb.Table(
-                dataframe=pd.DataFrame(
-                    {
-                        "Map": exp.model.mid_classes,
-                        "RC": get_weight(exp.model.emb_mid_rc),
-                        "LN": get_weight(exp.model.emb_mid_ln),
-                    }
-                )
-            ),
-            "model/uid_emb_mean_exp": wandb.Table(
-                dataframe=pd.DataFrame(
-                    {
-                        "User": exp.model.uid_classes,
-                        "RC": np.exp(get_weight(exp.model.emb_uid_rc)),
-                        "LN": np.exp(get_weight(exp.model.emb_uid_ln)),
-                    },
-                )
-            ),
-            "model/mid_emb_mean_exp": wandb.Table(
-                dataframe=pd.DataFrame(
-                    {
-                        "Map": exp.model.mid_classes,
-                        "RC": np.exp(get_weight(exp.model.emb_mid_rc)),
-                        "LN": np.exp(get_weight(exp.model.emb_mid_ln)),
-                    }
-                )
-            ),
-        }
-    )
+    exp.wandb_log_weights()
     wandb.finish()
+
+    del exp
+
+    exp = exp_fn(4)
+    exp.fit()
+    exp.wandb_log_weights()
+    wandb.finish()
+
+    del exp
