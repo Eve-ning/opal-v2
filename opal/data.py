@@ -50,7 +50,7 @@ def df_k(
         else:
             df = pd.read_sql(f"SELECT * FROM {dataset}", conn)
 
-    return df
+    return df.astype({"keys": int})
 
 
 def df_remove_low_support(
