@@ -42,6 +42,8 @@ def df_k(
         df = df.loc[df["keys"].isin(keys)] if keys else df
     else:
         if keys:
+            # SQL breaks for (x,), fix with (x)
+            keys = f"({keys[0]})" if len(keys) == 1 else tuple(keys)
             df = pd.read_sql(
                 rf"SELECT * FROM {dataset} WHERE `keys` IN {keys}", conn
             )
