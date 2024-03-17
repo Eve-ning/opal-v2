@@ -7,16 +7,9 @@ sys.path.append(PROJECT_DIR.as_posix())
 
 from components.delta_to_acc import st_delta_to_acc
 from components.select import st_select_model, st_select_user, st_select_map
-from components.map_embeddings import st_map_emb
-from components.rank import (
-    st_map_rank_hist,
-    st_map_ranks,
-    st_player_rank,
-    st_player_rank_hist,
-)
+from components.embeddings import st_map_emb, st_player_emb
 
-from components.player_embeddings import st_player_emb
-from utils import model_emb, predict_all, mapspeed_to_str
+from utils import mapspeed_to_str
 import streamlit as st
 
 st.title("Dan Analysis")
@@ -24,6 +17,7 @@ st.title("Dan Analysis")
 
 m, model_id = st_select_model(PROJECT_DIR / "app")
 df_uid, df_mid = m.get_embeddings()
+df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
 n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
 
 with st.expander("Model Analysis"):
@@ -35,80 +29,104 @@ with st.expander("Global Analysis"):
     st.header("Player Embeddings")
     st_player_emb(df_uid)
 
-# st.stop()
-# df_acc_mean, df_acc_lb, df_acc_ub = predict_all(m, model_id)
-# with st.expander("User Analysis"):
-#     username, useryear = st_select_user(
-#         name_opts=df_uid["name"],
-#         year_opts=df_uid["year"],
-#     )
-#
-#     df_rank_uid_i = df_acc_mean.rank(
-#         axis=0,
-#         ascending=False,
-#     ).loc[f"{username}/{useryear}"]
-#
-#     st_player_rank(df_rank_uid_i, n_uid)
-#     st_player_rank_hist(df_rank_uid_i, username)
-#
-# with st.expander("Map Analysis"):
-#     mapname, mapspeed = st_select_map(
-#         name_opts=df_mid["name"],
-#         speed_opts=df_mid["speed"],
-#     )
-#     mapspeed_str = mapspeed_to_str(mapspeed)
-#     df_accs_mid = df_acc_mean.loc[:, f"{mapname}/{mapspeed}"]
-#
-#     st_map_ranks(df_accs_mid)
-#     st_map_rank_hist(df_accs_mid, mapname, mapspeed_str)
-# %%
-# from opal.data import OsuDataModule, df_k
-#
-# df_raw = OsuDataModule(df_k(7)).df
-# # %%
-# df_piv = (
-#     df_raw.groupby(["mid", "uid"])
-#     .agg({"accuracy": "mean"})
-#     .reset_index()
-#     .pivot(index="uid", columns="mid", values="accuracy")
-# ).to_csv("df_piv.csv.gz", index=False, compression="gzip")
-# # %%
-# df_raw[["mid", "uid", "accuracy"]].to_csv(
-#     "df_raw.csv.gz", index=False, compression="gzip"
-# )
-# # %%
-# df_unc = (
-#     (df_accs - df_piv)
-#     .abs()
-#     .quantile(0.85, axis=0)
-#     .rename("uncertainty")
-#     .to_frame()
-#     .query("index.str.endswith('/0')")
-#     .assign(uncertainty_pct=lambda x: x.rank(pct=True))
-# )
-#
-# # %%
-# threshold = st.slider("Threshold", 0.8, 1.0, 0.925, 0.01)
-# df_accs_thres: pd.DataFrame = (
-#     (df_accs >= threshold)
-#     .mean(axis=0)
-#     .rename("thres")
-#     .rename_axis("mapname")
-#     .to_frame()
-#     .query("mapname.str.endswith('/0')")
-# )
-#
-# df_sr = (
-#     df_raw.query("mid.str.endswith('/0')")
-#     .groupby("mid")
-#     .agg({"sr": "first"})
-#     .merge(df_accs_thres, right_index=True, left_index=True)
-#     .merge(df_unc, right_index=True, left_index=True)
-#     .assign(
-#         sr_rank=lambda x: x["sr"].rank(ascending=False),
-#         thres_rank=lambda x: x["thres"].rank(ascending=True),
-#         delta_rank=lambda x: x["sr_rank"] - x["thres_rank"],
-#     )
-# )
-# st.dataframe(df_sr)
-# # %%
+with st.sidebar:
+    username, useryear = st_select_user(
+        name_opts=df_uid["username"],
+        year_opts=df_uid["year"],
+    )
+    usersupp = df_uid[
+        (df_uid["username"] == username) & (df_uid["year"] == useryear)
+    ]["support"]
+
+    mapname, mapspeed = st_select_map(
+        name_opts=df_mid["mapname"],
+        speed_opts=df_mid["speed"],
+    )
+    mapsupp = df_mid[
+        (df_mid["mapname"] == mapname) & (df_mid["speed"] == mapspeed)
+    ]["support"]
+
+st.markdown(
+    "## User and Map Support",
+    help="The support is the number of plays associated to this user or map. "
+    "Therefore, if a user or map has a low support, the model's "
+    "prediction will be less accurate. Keep this in mind.",
+)
+left, right = st.columns(2)
+left.metric("User Support", usersupp)
+right.metric("Map Support", mapsupp)
+
+map_pred = m.predict_map(f"{mapname}/{mapspeed}/7")
+user_pred = m.predict_user(f"{username}/{useryear}/7")
+map_play_pred = map_pred.loc[username, useryear, 7]
+
+mean, lower_bound, upper_bound = (
+    map_play_pred["mean"],
+    map_play_pred["lower_bound"],
+    map_play_pred["upper_bound"],
+)
+
+st.markdown(
+    "## Bounds",
+    help="The bounds are the 75% confidence interval for the prediction. "
+    "Which means, if you played the map 100 times, "
+    "it's likely that 75 of those scores fall within the bounds.",
+)
+cols = st.columns(3)
+cols[0].metric(
+    "Lower Bound",
+    f"{lower_bound:.2%}",
+    delta=f"-{(mean - lower_bound):.2%}",
+)
+cols[1].metric("Accuracy", f"{mean:.2%}")
+cols[2].metric(
+    "Upper Bound",
+    f"{upper_bound:.2%}",
+    delta=f"{(upper_bound - mean):.2%}",
+)
+
+st.markdown(
+    "## Global Statistics",
+    help="The following statistics are based on global predictions of the "
+    "selected user and map.",
+)
+
+import plotly.graph_objects as go
+
+st.markdown(f"### Accuracy Distribution\n")
+st.plotly_chart(
+    # Add a y vertical line at the mean
+    go.Figure(
+        [
+            go.Histogram(
+                name="Accuracy",
+                x=map_pred["mean"],
+            ),
+        ]
+    )
+    .update_layout(
+        title=f"Global Distribution for {mapname} @ {mapspeed_to_str(mapspeed)}",
+        xaxis_title="Accuracy",
+        yaxis_title="Count",
+        xaxis=dict(range=[0.85, 1]),
+    )
+    .add_vline(x=mean, line=dict(color="red", width=2)),
+)
+st.plotly_chart(
+    go.Figure(
+        [
+            go.Histogram(
+                name="Accuracy", x=user_pred["mean"], histnorm="probability"
+            ),
+        ]
+    )
+    .update_layout(
+        title=f"Accuracy Distribution for {username} @ {useryear}",
+        xaxis_title="Accuracy",
+        yaxis_title="Count",
+        xaxis=dict(range=[0.85, 1]),
+        # format y axis as percent
+        yaxis=dict(tickformat=".0%"),
+    )
+    .add_vline(x=mean, line=dict(color="red", width=2)),
+)
