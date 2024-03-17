@@ -104,7 +104,7 @@ class OsuDataModule(pl.LightningDataModule):
         self.le_mid = LabelEncoder()
         self.qt_acc = QuantileTransformer(
             n_quantiles=self.n_acc_quantiles,
-            output_distribution="uniform",
+            output_distribution="normal",
         )
 
         # Note: This implicitly overwrites the uid, and mid in favour of
