@@ -31,7 +31,7 @@ class Experiment:
     n_emb: int = 1
     n_epochs: int = 25
     n_patience_early_stopping: int = 2
-    l1_loss_weight: float = 0.001
+    l1_loss_weight: float = 0
     l2_loss_weight: float = 0
 
     @cached_property
@@ -55,11 +55,9 @@ class Experiment:
             le_uid=self.datamodule.le_uid,
             le_mid=self.datamodule.le_mid,
             qt_acc=self.datamodule.qt_acc,
-            w_ln_ratio=self.datamodule.ln_ratio_weights,
             n_uid_support=self.datamodule.n_uid_support,
             n_mid_support=self.datamodule.n_mid_support,
-            n_rc_emb=self.n_emb,
-            n_ln_emb=self.n_emb,
+            n_emb=self.n_emb,
             l1_loss_weight=self.l1_loss_weight,
             l2_loss_weight=self.l2_loss_weight,
         )
@@ -79,7 +77,7 @@ class Experiment:
             ],
             logger=WandbLogger(
                 entity="evening",
-                project="opal",
+                project="opal-combined-emb",
                 # Gets only the dataclass fields
                 # Note: __dict__ will include properties
                 config={
@@ -94,45 +92,30 @@ class Experiment:
         self.trainer.fit(self.model, datamodule=self.datamodule)
 
     def wandb_log_weights(self):
-        def get_weight(w):
-            return w.weight.detach().cpu().mean(dim=1).numpy()
+        df_uid_emb, df_mid_emb = self.model.get_embeddings()
 
         wandb.log(
             {
-                "model/uid_emb_mean": wandb.Table(
-                    dataframe=pd.DataFrame(
-                        {
-                            "User": self.model.uid_classes,
-                            "RC": get_weight(self.model.emb_uid_rc),
-                            "LN": get_weight(self.model.emb_uid_ln),
-                        },
+                "model/uid_emb": wandb.Table(
+                    dataframe=df_uid_emb.reset_index().assign(
+                        meta=lambda x: (
+                            x["username"]
+                            + "/"
+                            + x["year"].astype(str)
+                            + "/"
+                            + x["keys"].astype(str)
+                        )
                     )
                 ),
-                "model/mid_emb_mean": wandb.Table(
-                    dataframe=pd.DataFrame(
-                        {
-                            "Map": self.model.mid_classes,
-                            "RC": get_weight(self.model.emb_mid_rc),
-                            "LN": get_weight(self.model.emb_mid_ln),
-                        }
-                    )
-                ),
-                "model/uid_emb_mean_self": wandb.Table(
-                    dataframe=pd.DataFrame(
-                        {
-                            "User": self.model.uid_classes,
-                            "RC": np.exp(get_weight(self.model.emb_uid_rc)),
-                            "LN": np.exp(get_weight(self.model.emb_uid_ln)),
-                        },
-                    )
-                ),
-                "model/mid_emb_mean_self": wandb.Table(
-                    dataframe=pd.DataFrame(
-                        {
-                            "Map": self.model.mid_classes,
-                            "RC": np.exp(get_weight(self.model.emb_mid_rc)),
-                            "LN": np.exp(get_weight(self.model.emb_mid_ln)),
-                        }
+                "model/mid_emb": wandb.Table(
+                    dataframe=df_mid_emb.reset_index().assign(
+                        meta=lambda x: (
+                            x["mapname"]
+                            + "/"
+                            + x["speed"].astype(str)
+                            + "/"
+                            + x["keys"].astype(str)
+                        )
                     )
                 ),
             }
@@ -143,15 +126,17 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
     n_epochs = 25
     sample_set = "full"
+    batch_size = 2**10
     n_min_support = 50
     p_test = 0.10
-    n_emb = 1
-    l1_loss_weight = 1e-7
-    l2_loss_weight = 1e-14
+    n_emb = 2
+    l1_loss_weight = 0
+    l2_loss_weight = 0
 
     exp_fn = lambda k: Experiment(
         n_epochs=n_epochs,
         sample_set=sample_set,
+        batch_size=batch_size,
         n_keys=k,
         n_min_support=n_min_support,
         p_test=p_test,
@@ -165,11 +150,11 @@ if __name__ == "__main__":
     exp.wandb_log_weights()
     wandb.finish()
 
-    del exp
-
-    exp = exp_fn(4)
-    exp.fit()
-    exp.wandb_log_weights()
-    wandb.finish()
-
-    del exp
+    # del exp
+    #
+    # exp = exp_fn(4)
+    # exp.fit()
+    # exp.wandb_log_weights()
+    # wandb.finish()
+    #
+    # del exp

@@ -19,11 +19,9 @@ class DeltaModel(pl.LightningModule):
         le_uid: LabelEncoder,
         le_mid: LabelEncoder,
         qt_acc: QuantileTransformer,
-        w_ln_ratio: list,
         n_uid_support: list,
         n_mid_support: list,
-        n_rc_emb: int = 1,
-        n_ln_emb: int = 1,
+        n_emb: int = 2,
         n_delta_neurons: int = 4,
         lr: float = 0.003,
         l1_loss_weight: float = 0.001,
@@ -35,11 +33,9 @@ class DeltaModel(pl.LightningModule):
             le_uid: Label Encoder for User IDs
             le_mid: Label Encoder for Beatmap IDs
             qt_acc: Quantile Transformer for Accuracy
-            w_ln_ratio: Weights for LN Ratio
             n_uid_support: Number of Beatmaps each User has played
             n_mid_support: Number of Users each Beatmap has scores on
-            n_rc_emb: Number of Embedding Neurons for RC
-            n_ln_emb: Number of Embedding Neurons for LN
+            n_emb: Number of Embedding Dimensions
             n_delta_neurons: Number of Neurons in the Delta to Accuracy Layers
             lr: Learning Rate
             l1_loss_weight: L1 Loss Weight
@@ -50,10 +46,6 @@ class DeltaModel(pl.LightningModule):
         self.le_uid = le_uid
         self.le_mid = le_mid
         self.qt_acc = qt_acc
-        self.w_ln_ratio = nn.Parameter(
-            tensor(w_ln_ratio, dtype=torch.float),
-            requires_grad=False,
-        )
         self.n_uid_support = nn.Parameter(
             tensor(n_uid_support, dtype=torch.int),
             requires_grad=False,
@@ -70,25 +62,17 @@ class DeltaModel(pl.LightningModule):
         n_mid = len(le_mid.classes_)
 
         # Embeddings for User and Beatmap IDs
-        self.emb_uid_rc = nn.Embedding(n_uid, n_rc_emb)
-        self.emb_mid_rc = nn.Embedding(n_mid, n_rc_emb)
-        self.emb_uid_ln = nn.Embedding(n_uid, n_ln_emb)
-        self.emb_mid_ln = nn.Embedding(n_mid, n_ln_emb)
+        self.emb_uid = nn.Embedding(n_uid, n_emb)
+        self.emb_mid = nn.Embedding(n_mid, n_emb)
 
         # Batch Normalization for Embedding Differences
-        self.bn_rc = nn.BatchNorm1d(n_rc_emb, affine=False)
-        self.bn_ln = nn.BatchNorm1d(n_ln_emb, affine=False)
+        self.bn = nn.BatchNorm1d(n_emb, affine=False)
 
         # Linear Layers for Embedding Differences to Accuracy Mean and Variance
         # The positive linear layer ensures the estimated function is
         # monotonic increasing
-        self.delta_rc_to_acc = nn.Sequential(
-            PositiveLinear(n_rc_emb, n_delta_neurons),
-            nn.Tanh(),
-            PositiveLinear(n_delta_neurons, 2),
-        )
-        self.delta_ln_to_acc = nn.Sequential(
-            PositiveLinear(n_ln_emb, n_delta_neurons),
+        self.delta_to_acc = nn.Sequential(
+            PositiveLinear(n_emb, n_delta_neurons),
             nn.Tanh(),
             PositiveLinear(n_delta_neurons, 2),
         )
@@ -96,38 +80,24 @@ class DeltaModel(pl.LightningModule):
         self.save_hyperparameters()
 
     def forward(self, x_uid, x_mid):
-        # Get the LN Ratio for the current beatmap
-        w_ln_ratio = self.w_ln_ratio[x_mid]
-
         # Convert the One-Hot Encoded User ID and Beatmap ID to Embeddings
-        x_uid_rc = self.emb_uid_rc(x_uid)
-        x_mid_rc = self.emb_mid_rc(x_mid)
-        x_uid_ln = self.emb_uid_ln(x_uid)
-        x_mid_ln = self.emb_mid_ln(x_mid)
+        x_uid = self.emb_uid(x_uid)
+        x_mid = self.emb_mid(x_mid)
 
         # Calculate the difference between the User and Beatmap ID Embeddings
-        x_rc_delta = x_uid_rc - x_mid_rc
-        x_ln_delta = x_uid_ln - x_mid_ln
+        x_delta = x_uid - x_mid
 
         # Normalize the Embedding Differences
-        x_rc_delta = self.bn_rc(x_rc_delta)
-        x_ln_delta = self.bn_ln(x_ln_delta)
+        x_delta = self.bn(x_delta)
 
         # Convert the Embedding Differences to Accuracy Mean and Variance
-        y_rc = self.delta_rc_to_acc(x_rc_delta)
-        y_ln = self.delta_ln_to_acc(x_ln_delta)
+        y = self.delta_to_acc(x_delta)
 
         # Squash the predictions to the range [0, 1]
-        y_rc_mean = hardsigmoid(y_rc[:, 0])
-        y_ln_mean = hardsigmoid(y_ln[:, 0])
+        y_mean = hardsigmoid(y[:, 0])
 
         # Make sure the variance is positive
-        y_rc_var = softplus(y_rc[:, 1])
-        y_ln_var = softplus(y_ln[:, 1])
-
-        # Combine the predictions using the LN Ratio
-        y_mean = y_rc_mean * (1 - w_ln_ratio) + y_ln_mean * w_ln_ratio
-        y_var = y_rc_var * (1 - w_ln_ratio) + y_ln_var * w_ln_ratio
+        y_var = softplus(y[:, 1])
 
         return y_mean, y_var
 
@@ -151,6 +121,24 @@ class DeltaModel(pl.LightningModule):
             + ((target - mean) ** 2 / (2 * var + eps))
         ).mean()
 
+    @staticmethod
+    def loss_nll_laplace(
+        mean: Tensor,
+        var: Tensor,
+        target: Tensor,
+        eps: float = 1e-10,
+    ):
+        """Negative Log Likelihood Loss for Laplace Distribution
+
+        Args:
+            mean: Mean of the Gaussian Distribution
+            var: Variance of the Gaussian Distribution
+            target: Target Value
+            eps: Epsilon to prevent NaNs. Defaults to 1e-10.
+        """
+        std = torch.sqrt(var + eps)
+        return (torch.log(2 * std) + torch.abs(target - mean) / std).mean()
+
     def decoded_rmse(self, mean: Tensor, var: Tensor, target: Tensor):  # noqa
         return (
             nn.MSELoss()(
@@ -170,15 +158,13 @@ class DeltaModel(pl.LightningModule):
     ):
         self.log(
             "train/nll_loss",
-            (loss := self.step(batch, self.loss_nll)),
+            (loss := self.step(batch, self.loss_nll_laplace)),
             prog_bar=True,
         )
         # Add l1 regularization to the embeddings
         l1 = (
-            torch.exp(self.emb_uid_rc.weight).sum()
-            + torch.exp(self.emb_mid_rc.weight).sum()
-            + torch.exp(self.emb_uid_ln.weight).sum()
-            + torch.exp(self.emb_mid_ln.weight).sum()
+            torch.exp(self.emb_uid.weight).sum()
+            + torch.exp(self.emb_mid.weight).sum()
         )
         self.log("train/l1_loss", l1, prog_bar=True)
         l2 = l1**2
@@ -207,7 +193,7 @@ class DeltaModel(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            patience=2,
+            patience=1,
             factor=0.5,
         )
         return {
@@ -225,23 +211,30 @@ class DeltaModel(pl.LightningModule):
         return np.array(self.le_mid.classes_)
 
     def get_embeddings(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        uid_rc = self.emb_uid_rc.weight.detach().numpy()
-        uid_ln = self.emb_uid_ln.weight.detach().numpy()
-        mid_rc = self.emb_mid_rc.weight.detach().numpy()
-        mid_ln = self.emb_mid_ln.weight.detach().numpy()
+        """Returns the Embeddings for Users and Beatmaps
+
+        Returns:
+            tuple[pd.DataFrame, pd.DataFrame]: User and Beatmap Embeddings
+            The DataFrames contain the Embeddings and the Support for each
+            User and Beatmap.
+            The Support is the number of scores each User and Beatmap is
+            associated with.
+        """
+        uid = self.emb_uid.weight.detach().numpy()
+        mid = self.emb_mid.weight.detach().numpy()
 
         df_emb_uid = pd.DataFrame(
             {
-                **{f"RC{k}": emb for k, emb in enumerate(uid_rc.T)},
-                **{f"LN{k}": emb for k, emb in enumerate(uid_ln.T)},
+                **{f"D{k}": emb for k, emb in enumerate(uid.T)},
+                **{"support": self.n_uid_support},
             },
             index=self.multi_index_uid(),
         )
 
         df_emb_mid = pd.DataFrame(
             {
-                **{f"RC{k}": emb for k, emb in enumerate(mid_rc.T)},
-                **{f"LN{k}": emb for k, emb in enumerate(mid_ln.T)},
+                **{f"D{k}": emb for k, emb in enumerate(mid.T)},
+                **{"support": self.n_mid_support},
             },
             index=self.multi_index_mid(),
         )
