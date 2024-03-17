@@ -12,14 +12,6 @@ from opal.model.delta_model import DeltaModel
 
 
 @st.cache_data()
-def model_emb(
-    _m: DeltaModel,
-    model_id: str,
-):
-    return _m.get_embeddings()
-
-
-@st.cache_data()
 def predict_all(
     _m: DeltaModel,
     model_id: str,
