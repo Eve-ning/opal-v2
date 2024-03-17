@@ -1,7 +1,8 @@
 import numpy as np
 import plotly.express as px
 import streamlit as st
-
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 DAN_MAPPING = {
     "0th": 0,
@@ -33,16 +34,16 @@ def st_map_emb(df):
         "in this case, we have RC and LN."
     )
     dans_only = st.checkbox("Dans Only", value=True)
+    df = df.copy().reset_index()
     if dans_only:
         df = df[
             (
-                df["name"].str.contains("Regular Dan Phase")
-                | df["name"].str.contains("LN Dan Phase")
+                df["mapname"].str.contains("Regular Dan Phase")
+                | df["mapname"].str.contains("LN Dan Phase")
             )
-            & (df["speed"] == "0")
+            & (df["speed"] == 0)
         ]
-    rc, ln, ln_ratio = df["RC"], df["LN"], df["ln_ratio"]
-    name = df["name"] + " " + df["speed"]
+    name = df["mapname"] + " " + df["speed"].astype(str)
 
     # Extract the dan number and color
     name_text = (
@@ -59,40 +60,18 @@ def st_map_emb(df):
         if dans_only
         else None
     )
+    st.text(df.columns)
 
-    def plot(rc, ln, name):
-        return px.scatter(
-            x=rc,
-            y=ln,
+    st.plotly_chart(
+        px.scatter(
+            data_frame=df,
+            x="d0",
+            y="d1",
             hover_name=name,
-            labels={"x": "RC", "y": "LN"},
             size=[1] * len(df) if dans_only else None,
             text=name_text,
             color=name_color,
         ).update_layout(
             font=dict(size=16)
         )  # Set the font size here
-
-    m_scaled_tab, m_unscaled_tab = st.tabs(["Scaled", "Unscaled"])
-    with m_scaled_tab:
-        st.info(
-            "**Embeddings are scaled** by the ratio of LN/RC notes. "
-            "Therefore, if a map is LN-hard, but has only a few LNs, "
-            "the LN embedding will be small."
-        )
-        st.plotly_chart(
-            plot(rc * (1 - ln_ratio), ln * ln_ratio, name),
-            use_container_width=True,
-        )
-
-    with m_unscaled_tab:
-        st.info(
-            "**Embeddings are NOT scaled** by the ratio of LN/RC notes. "
-            "Therefore, if a map is LN-hard, but has only a few LNs, "
-            "the LN embedding will remain large. "
-            "Which isn't representative of the map."
-        )
-        st.plotly_chart(
-            plot(rc, ln, name),
-            use_container_width=True,
-        )
+    )

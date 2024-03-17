@@ -1,12 +1,9 @@
 from typing import TYPE_CHECKING
 
-import torch
-
-
 import plotly.graph_objects as go
 import streamlit as st
-from scipy.interpolate import interp1d
-from torch.nn.functional import hardsigmoid
+import torch
+from torch.nn.functional import hardsigmoid, softplus
 
 if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel
@@ -14,47 +11,51 @@ if TYPE_CHECKING:
 
 def st_delta_to_acc(m: "DeltaModel"):
     x_delta = torch.linspace(-4, 4, 100)
-    rc_dim = m.emb_uid_rc.weight.shape[1]
-    ln_dim = m.emb_uid_ln.weight.shape[1]
-    y_rc = (
-        hardsigmoid(m.delta_rc_to_acc(x_delta.repeat((rc_dim, 1)).T))
-        .squeeze()
-        .detach()
-        .numpy()[:, 0]
-    )
-    y_ln = (
-        hardsigmoid(m.delta_ln_to_acc(x_delta.repeat((ln_dim, 1)).T))
-        .squeeze()
-        .detach()
-        .numpy()[:, 0]
-    )
-    print(y_rc.shape)
-    y_rc_inverse_func = interp1d(
-        y_rc,
-        x_delta,
-        fill_value="extrapolate",
-    )
-    y_ln_inverse_func = interp1d(
-        y_ln,
-        x_delta,
-        fill_value="extrapolate",
-    )
+    dims = m.emb_uid.weight.shape[1]
+    y_means = []
+    y_vars = []
+    for d in range(dims):
+        # Create a zeroed tensor
+        # Then replace the dth element with x_delta
+        # This simulates the effect of x_delta solely on the dth dimension
+        x_delta_d = torch.zeros(len(x_delta), dims)
+        x_delta_d[:, d] = x_delta
+        y_mean = m.delta_to_acc_mean(x_delta_d).squeeze()
+        y_var = m.delta_to_acc_var(x_delta_d).squeeze()
+        y_means.append(y_mean)
+        y_vars.append(y_var)
 
-    x_inv = torch.linspace(0, 1, 100)
-    y_rc_inv = y_rc_inverse_func(x_inv)
-    y_ln_inv = y_ln_inverse_func(x_inv)
-
+    st.header("Delta to Accuracy Mapping")
+    st.write(
+        """
+        The following plots shows the effect of the **Delta**, which is the 
+        $E_{u}- E_{m}$, on **Accuracy**. We predict 2 metrics, the mean and
+        variance of the accuracy, assuming that the accuracy is a Laplace
+        distribution.
+        
+        The Laplace distribution is given by:
+        $$
+        f(x | \\mu, s) = \\frac{1}{2s} \\exp\\left(-\\frac{|x - \\mu|}{s}\\right)
+        $$
+        where $\\mu$ is the mean and $s$ is the scale parameter. The scale
+        parameter is related to the variance by $\\sigma^2 = 2s^2$.
+        """
+    )
     left, right = st.columns(2)
     left.plotly_chart(
         go.Figure(
             data=[
-                go.Scatter(x=x_delta, y=y_rc, name="RC"),
-                go.Scatter(x=x_delta, y=y_ln, name="LN"),
+                go.Scatter(
+                    x=x_delta,
+                    y=hardsigmoid(y).detach().numpy(),
+                    name=f"D{e}",
+                )
+                for e, y in enumerate(y_means)
             ],
             layout=go.Layout(
                 dict(
                     xaxis_title="Delta",
-                    yaxis_title="Accuracy",
+                    yaxis_title="Accuracy Mean",
                     legend_title="Type",
                     yaxis_range=[0, 1],
                 )
@@ -62,17 +63,20 @@ def st_delta_to_acc(m: "DeltaModel"):
         ),
         use_container_width=True,
     )
-
     right.plotly_chart(
         go.Figure(
             data=[
-                go.Scatter(x=x_inv, y=y_rc_inv, name="RC"),
-                go.Scatter(x=x_inv, y=y_ln_inv, name="LN"),
+                go.Scatter(
+                    x=x_delta,
+                    y=(softplus(y) ** 2 * 2).detach().numpy(),
+                    name=f"D{e}",
+                )
+                for e, y in enumerate(y_vars)
             ],
             layout=go.Layout(
                 dict(
-                    xaxis_title="Accuracy",
-                    yaxis_title="Delta",
+                    xaxis_title="Delta",
+                    yaxis_title="Accuracy Variance",
                     legend_title="Type",
                 )
             ),
