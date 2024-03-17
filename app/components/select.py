@@ -13,11 +13,18 @@ def st_select_user(
     name_opts: pd.DataFrame,
     year_opts: pd.DataFrame,
 ):
-    left, right = st.columns(2)
-    username = left.selectbox("User", name_opts.unique())
-    useryear = right.select_slider(
-        "Year", year_opts[name_opts == username].unique()
-    )
+    username = st.selectbox("User", name_opts.unique())
+
+    years = year_opts[name_opts == username].unique()
+
+    if len(years) == 1:
+        useryear = years[0]
+        st.metric("Year", useryear)
+    else:
+        useryear = st.select_slider(
+            "Year",
+            year_opts[name_opts == username].unique(),
+        )
     return username, useryear
 
 
@@ -27,7 +34,7 @@ def st_select_map(name_opts: pd.Series, speed_opts: pd.Series):
     mapspeed = st.radio(
         "Speed",
         speed_options,
-        format_func={"-1": "HT", "0": "NM", "1": "DT"}.get,
+        format_func={-1: "HT", 0: "NM", 1: "DT"}.get,
         horizontal=True,
     )
     return mapname, mapspeed
