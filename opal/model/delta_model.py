@@ -16,13 +16,15 @@ from opal.model.positive_linear import PositiveLinear
 class DeltaModel(pl.LightningModule):
     def __init__(
         self,
+        one_cycle_total_steps: int,
         le_uid: LabelEncoder,
         le_mid: LabelEncoder,
         qt_acc: QuantileTransformer,
         n_uid_support: list,
         n_mid_support: list,
         n_emb: int = 2,
-        n_delta_neurons: int = 4,
+        n_delta_mean_neurons: int = 4,
+        n_delta_var_neurons: int = 20,
         lr: float = 0.003,
         l1_loss_weight: float = 0.001,
         l2_loss_weight: float = 0,
@@ -36,13 +38,17 @@ class DeltaModel(pl.LightningModule):
             n_uid_support: Number of Beatmaps each User has played
             n_mid_support: Number of Users each Beatmap has scores on
             n_emb: Number of Embedding Dimensions
-            n_delta_neurons: Number of Neurons in the Delta to Accuracy Layers
+            n_delta_mean_neurons: Number of Neurons for the Delta Mean
+                Estimation
+            n_delta_var_neurons: Number of Neurons for the  Delta Variance
+                Estimation
             lr: Learning Rate
             l1_loss_weight: L1 Loss Weight
             l2_loss_weight: L2 Loss Weight
 
         """
         super().__init__()
+        self.total_steps = one_cycle_total_steps
         self.le_uid = le_uid
         self.le_mid = le_mid
         self.qt_acc = qt_acc
@@ -71,10 +77,17 @@ class DeltaModel(pl.LightningModule):
         # Linear Layers for Embedding Differences to Accuracy Mean and Variance
         # The positive linear layer ensures the estimated function is
         # monotonic increasing
-        self.delta_to_acc = nn.Sequential(
-            PositiveLinear(n_emb, n_delta_neurons),
+        self.delta_to_acc_mean = nn.Sequential(
+            PositiveLinear(n_emb, n_delta_mean_neurons),
             nn.Tanh(),
-            PositiveLinear(n_delta_neurons, 2),
+            PositiveLinear(n_delta_mean_neurons, 1),
+        )
+        self.delta_to_acc_var = nn.Sequential(
+            nn.Linear(n_emb, n_delta_var_neurons),
+            nn.ReLU(),
+            nn.Linear(n_delta_var_neurons, n_delta_var_neurons),
+            nn.ReLU(),
+            nn.Linear(n_delta_var_neurons, 1),
         )
 
         self.save_hyperparameters()
@@ -91,13 +104,8 @@ class DeltaModel(pl.LightningModule):
         x_delta = self.bn(x_delta)
 
         # Convert the Embedding Differences to Accuracy Mean and Variance
-        y = self.delta_to_acc(x_delta)
-
-        # Squash the predictions to the range [0, 1]
-        y_mean = hardsigmoid(y[:, 0])
-
-        # Make sure the variance is positive
-        y_var = softplus(y[:, 1])
+        y_mean = hardsigmoid(self.delta_to_acc_mean(x_delta)).squeeze()
+        y_var = softplus(self.delta_to_acc_var(x_delta)).squeeze()
 
         return y_mean, y_var
 
@@ -136,8 +144,8 @@ class DeltaModel(pl.LightningModule):
             target: Target Value
             eps: Epsilon to prevent NaNs. Defaults to 1e-10.
         """
-        std = torch.sqrt(var + eps)
-        return (torch.log(2 * std) + torch.abs(target - mean) / std).mean()
+        scale = torch.sqrt(var + eps) / 2
+        return (torch.log(2 * scale) + torch.abs(target - mean) / scale).mean()
 
     def decoded_rmse(self, mean: Tensor, var: Tensor, target: Tensor):  # noqa
         return (
@@ -191,15 +199,21 @@ class DeltaModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        one_cycle = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
-            patience=1,
-            factor=0.5,
+            max_lr=self.lr * 10,
+            pct_start=0.1,
+            three_phase=True,
+            total_steps=self.total_steps,
+            anneal_strategy="linear",
         )
+
         return {
             "optimizer": optimizer,
-            "lr_scheduler": scheduler,
-            "monitor": "val/rmse_loss",
+            "lr_scheduler": {
+                "scheduler": one_cycle,
+                "interval": "step",
+            },
         }
 
     @property
@@ -225,7 +239,7 @@ class DeltaModel(pl.LightningModule):
 
         df_emb_uid = pd.DataFrame(
             {
-                **{f"D{k}": emb for k, emb in enumerate(uid.T)},
+                **{f"d{k}": emb for k, emb in enumerate(uid.T)},
                 **{"support": self.n_uid_support},
             },
             index=self.multi_index_uid(),
@@ -233,7 +247,7 @@ class DeltaModel(pl.LightningModule):
 
         df_emb_mid = pd.DataFrame(
             {
-                **{f"D{k}": emb for k, emb in enumerate(mid.T)},
+                **{f"d{k}": emb for k, emb in enumerate(mid.T)},
                 **{"support": self.n_mid_support},
             },
             index=self.multi_index_mid(),
@@ -274,9 +288,9 @@ class DeltaModel(pl.LightningModule):
 
         df_mean = pd.DataFrame(
             {
-                "Mean": y_mean_decode,
-                "Lower Bound": y_mean_lower_decode,
-                "Upper Bound": y_mean_upper_decode,
+                "mean": y_mean_decode,
+                "lower_bound": y_mean_lower_decode,
+                "upper_bound": y_mean_upper_decode,
             },
             index=self.multi_index_mid(),
         )
@@ -317,9 +331,9 @@ class DeltaModel(pl.LightningModule):
 
         df_mean = pd.DataFrame(
             {
-                "Mean": y_mean_decode,
-                "Lower Bound": y_mean_lower_decode,
-                "Upper Bound": y_mean_upper_decode,
+                "mean": y_mean_decode,
+                "lower_bound": y_mean_lower_decode,
+                "upper_bound": y_mean_upper_decode,
             },
             index=self.multi_index_uid(),
         )
@@ -329,20 +343,20 @@ class DeltaModel(pl.LightningModule):
         return pd.MultiIndex.from_frame(
             pd.Series(self.uid_classes)
             .str.split("/", expand=True)
-            .rename(columns={0: "User Name", 1: "Year", 2: "Keys"})
-            .astype({"Year": int, "Keys": float})
+            .rename(columns={0: "username", 1: "year", 2: "keys"})
+            .astype({"year": int, "keys": float})
             # We cast to float, then int to handle strings with decimals
-            .astype({"Keys": int})
+            .astype({"keys": int})
         )
 
     def multi_index_mid(self):
         return pd.MultiIndex.from_frame(
             pd.Series(self.mid_classes)
             .str.split("/", expand=True)
-            .rename(columns={0: "Map Name", 1: "Speed", 2: "Keys"})
-            .astype({"Speed": int, "Keys": float})
+            .rename(columns={0: "mapname", 1: "speed", 2: "keys"})
+            .astype({"speed": int, "keys": float})
             # We cast to float, then int to handle strings with decimals
-            .astype({"Keys": int})
+            .astype({"keys": int})
         )
 
     def decode_acc(self, x):

@@ -23,6 +23,7 @@ from opal.model.delta_model import DeltaModel
 @dataclass
 class Experiment:
     n_keys: Sequence[int] | int | None = (7,)
+    lr: float = 1e-3
     sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full"
     batch_size: int = 2**10
     p_test: float = 0
@@ -52,6 +53,10 @@ class Experiment:
     @cached_property
     def model(self):
         return DeltaModel(
+            one_cycle_total_steps=len(self.datamodule.ds_train)
+            // self.batch_size
+            * self.n_epochs,
+            lr=self.lr,
             le_uid=self.datamodule.le_uid,
             le_mid=self.datamodule.le_mid,
             qt_acc=self.datamodule.qt_acc,
@@ -132,10 +137,12 @@ if __name__ == "__main__":
     n_emb = 2
     l1_loss_weight = 0
     l2_loss_weight = 0
+    lr = 1e-3
 
     exp_fn = lambda k: Experiment(
         n_epochs=n_epochs,
         sample_set=sample_set,
+        lr=lr,
         batch_size=batch_size,
         n_keys=k,
         n_min_support=n_min_support,
