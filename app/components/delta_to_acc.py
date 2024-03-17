@@ -3,14 +3,14 @@ from typing import TYPE_CHECKING
 import plotly.graph_objects as go
 import streamlit as st
 import torch
-from torch.nn.functional import hardsigmoid, softplus
+from torch.nn.functional import softplus
 
 if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel
 
 
 def st_delta_to_acc(m: "DeltaModel"):
-    x_delta = torch.linspace(-4, 4, 100)
+    x_delta = torch.linspace(-5, 5, 100)
     dims = m.emb_uid.weight.shape[1]
     y_means = []
     y_vars = []
@@ -47,7 +47,9 @@ def st_delta_to_acc(m: "DeltaModel"):
             data=[
                 go.Scatter(
                     x=x_delta,
-                    y=hardsigmoid(y).detach().numpy(),
+                    y=m.qt_acc.inverse_transform(
+                        y.detach().numpy().reshape(-1, 1)
+                    ).squeeze(),
                     name=f"D{e}",
                 )
                 for e, y in enumerate(y_means)
@@ -57,7 +59,6 @@ def st_delta_to_acc(m: "DeltaModel"):
                     xaxis_title="Delta",
                     yaxis_title="Accuracy Mean",
                     legend_title="Type",
-                    yaxis_range=[0, 1],
                 )
             ),
         ),
