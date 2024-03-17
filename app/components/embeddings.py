@@ -24,17 +24,18 @@ DAN_MAPPING = {
 
 def st_map_emb(df):
     st.error(
-        "Currently, this is rather experimental. "
-        "We're working on making this more intuitive."
+        "Note that the embeddings dimensions do not have a fixed meaning. "
+        "However, it's possible to interpret them as a measure of difficulty. "
+        "Where the larger the value, the harder the map."
     )
-    st.write(
-        "These embeddings represent the difficulty of maps. "
-        "The larger the values (top right), the harder the map. "
-        "Each dimension (x, y) represents a different difficulty element, "
-        "in this case, we have RC and LN."
+    dans_only = st.checkbox(
+        "Dans Only",
+        value=True,
+        help="Dans are the Dan Courses in the game."
+        "Each level is a full course of different types of "
+        "patterns. It's a way to measure a player's skill. "
+        "We use this as a measure to sanity check the embeddings.",
     )
-    dans_only = st.checkbox("Dans Only", value=True)
-    df = df.copy().reset_index()
     if dans_only:
         df = df[
             (
@@ -60,7 +61,6 @@ def st_map_emb(df):
         if dans_only
         else None
     )
-    st.text(df.columns)
 
     st.plotly_chart(
         px.scatter(
@@ -73,5 +73,19 @@ def st_map_emb(df):
             color=name_color,
         ).update_layout(
             font=dict(size=16)
-        )  # Set the font size here
+        ),  # Set the font size here
+        use_container_width=True,
+    )
+
+
+def st_player_emb(df):
+    # Concatenate name and year for display on plotly
+    st.plotly_chart(
+        px.scatter(
+            df,
+            x="d0",
+            y="d1",
+            hover_name=df["username"] + " " + df["year"].astype(str),
+        ),
+        use_container_width=True,
     )
