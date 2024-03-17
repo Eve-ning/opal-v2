@@ -23,11 +23,10 @@ st.title("Dan Analysis")
 
 
 m, model_id = st_select_model(PROJECT_DIR / "app")
-df_mid, df_uid = model_emb(m, model_id)
+df_uid, df_mid = m.get_embeddings()
 n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
 
 with st.expander("Model Analysis"):
-    st.header("Delta to Accuracy Mapping")
     st_delta_to_acc(m)
 
 with st.expander("Global Analysis"):
@@ -36,31 +35,32 @@ with st.expander("Global Analysis"):
     st.header("Player Embeddings")
     st_player_emb(df_uid)
 
-df_acc_mean, df_acc_lb, df_acc_ub = predict_all(m, model_id)
-with st.expander("User Analysis"):
-    username, useryear = st_select_user(
-        name_opts=df_uid["name"],
-        year_opts=df_uid["year"],
-    )
-
-    df_rank_uid_i = df_acc_mean.rank(
-        axis=0,
-        ascending=False,
-    ).loc[f"{username}/{useryear}"]
-
-    st_player_rank(df_rank_uid_i, n_uid)
-    st_player_rank_hist(df_rank_uid_i, username)
-
-with st.expander("Map Analysis"):
-    mapname, mapspeed = st_select_map(
-        name_opts=df_mid["name"],
-        speed_opts=df_mid["speed"],
-    )
-    mapspeed_str = mapspeed_to_str(mapspeed)
-    df_accs_mid = df_acc_mean.loc[:, f"{mapname}/{mapspeed}"]
-
-    st_map_ranks(df_accs_mid)
-    st_map_rank_hist(df_accs_mid, mapname, mapspeed_str)
+# st.stop()
+# df_acc_mean, df_acc_lb, df_acc_ub = predict_all(m, model_id)
+# with st.expander("User Analysis"):
+#     username, useryear = st_select_user(
+#         name_opts=df_uid["name"],
+#         year_opts=df_uid["year"],
+#     )
+#
+#     df_rank_uid_i = df_acc_mean.rank(
+#         axis=0,
+#         ascending=False,
+#     ).loc[f"{username}/{useryear}"]
+#
+#     st_player_rank(df_rank_uid_i, n_uid)
+#     st_player_rank_hist(df_rank_uid_i, username)
+#
+# with st.expander("Map Analysis"):
+#     mapname, mapspeed = st_select_map(
+#         name_opts=df_mid["name"],
+#         speed_opts=df_mid["speed"],
+#     )
+#     mapspeed_str = mapspeed_to_str(mapspeed)
+#     df_accs_mid = df_acc_mean.loc[:, f"{mapname}/{mapspeed}"]
+#
+#     st_map_ranks(df_accs_mid)
+#     st_map_rank_hist(df_accs_mid, mapname, mapspeed_str)
 # %%
 # from opal.data import OsuDataModule, df_k
 #
