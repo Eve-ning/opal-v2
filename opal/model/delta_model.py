@@ -104,7 +104,7 @@ class DeltaModel(pl.LightningModule):
         x_delta = self.bn(x_delta)
 
         # Convert the Embedding Differences to Accuracy Mean and Variance
-        y_mean = hardsigmoid(self.delta_to_acc_mean(x_delta)).squeeze()
+        y_mean = self.delta_to_acc_mean(x_delta).squeeze()
         y_var = softplus(self.delta_to_acc_var(x_delta)).squeeze()
 
         return y_mean, y_var
