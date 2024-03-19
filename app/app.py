@@ -20,15 +20,6 @@ df_uid, df_mid = m.get_embeddings()
 df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
 n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
 
-with st.expander("Model Analysis"):
-    st_delta_to_acc(m)
-
-with st.expander("Global Analysis"):
-    st.header("Map Embeddings")
-    st_map_emb(df_mid)
-    st.header("Player Embeddings")
-    st_player_emb(df_uid)
-
 with st.sidebar:
     username, useryear = st_select_user(
         name_opts=df_uid["username"],
@@ -45,6 +36,23 @@ with st.sidebar:
     mapsupp = df_mid[
         (df_mid["mapname"] == mapname) & (df_mid["speed"] == mapspeed)
     ]["support"]
+with st.expander("Model Analysis"):
+    st_delta_to_acc(m)
+
+with st.expander("Global Analysis"):
+    st.header("Map Embeddings")
+    st_map_emb(
+        df_mid,
+        df_mid[(df_mid["mapname"] == mapname)],
+    )
+    st.header("Player Embeddings")
+    st_player_emb(
+        df_uid,
+        df_uid[
+            (df_uid["username"] == username)  # & (df_uid["year"] == useryear)
+        ],
+    )
+
 
 st.markdown(
     "## User and Map Support",
@@ -105,12 +113,19 @@ st.plotly_chart(
         ]
     )
     .update_layout(
-        title=f"Global Distribution for {mapname} @ {mapspeed_to_str(mapspeed)}",
+        title=f"Map Global Accuracy Distribution",
         xaxis_title="Accuracy",
         yaxis_title="Count",
         xaxis=dict(range=[0.85, 1]),
     )
-    .add_vline(x=mean, line=dict(color="red", width=2)),
+    .add_vline(x=mean, line=dict(color="red", width=2))
+    .add_vrect(
+        lower_bound,
+        upper_bound,
+        fillcolor="yellow",
+        opacity=0.2,
+        line=dict(width=0),
+    )
 )
 st.plotly_chart(
     go.Figure(
@@ -121,12 +136,19 @@ st.plotly_chart(
         ]
     )
     .update_layout(
-        title=f"Accuracy Distribution for {username} @ {useryear}",
+        title=f"Player Global Accuracy Distribution",
         xaxis_title="Accuracy",
         yaxis_title="Count",
         xaxis=dict(range=[0.85, 1]),
         # format y axis as percent
         yaxis=dict(tickformat=".0%"),
     )
-    .add_vline(x=mean, line=dict(color="red", width=2)),
+    .add_vline(x=mean, line=dict(color="red", width=2))
+    .add_vrect(
+        lower_bound,
+        upper_bound,
+        fillcolor="yellow",
+        opacity=0.2,
+        line=dict(width=0),
+    )
 )
