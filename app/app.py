@@ -1,26 +1,26 @@
 import sys
-
 from pathlib import Path
+
+import streamlit as st
+
+from components.bound_metrics import bound_metrics
+from components.delta_to_acc import st_delta_to_acc
+from components.embeddings import st_map_emb, st_player_emb
+from components.global_prediction import global_prediction
+from components.select import st_select_model, st_select_user, st_select_map
 
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
 
-from components.delta_to_acc import st_delta_to_acc
-from components.select import st_select_model, st_select_user, st_select_map
-from components.embeddings import st_map_emb, st_player_emb
-
-from utils import mapspeed_to_str
-import streamlit as st
 
 st.title("Dan Analysis")
 
 
-m, model_id = st_select_model(PROJECT_DIR / "app")
-df_uid, df_mid = m.get_embeddings()
-df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
-n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
-
 with st.sidebar:
+    m, model_id = st_select_model(PROJECT_DIR / "app")
+    df_uid, df_mid = m.get_embeddings()
+    df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
+    n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
     username, useryear = st_select_user(
         name_opts=df_uid["username"],
         year_opts=df_uid["year"],
@@ -33,36 +33,19 @@ with st.sidebar:
         name_opts=df_mid["mapname"],
         speed_opts=df_mid["speed"],
     )
+
     mapsupp = df_mid[
         (df_mid["mapname"] == mapname) & (df_mid["speed"] == mapspeed)
     ]["support"]
-with st.expander("Model Analysis"):
-    st_delta_to_acc(m)
-
-with st.expander("Global Analysis"):
-    st.header("Map Embeddings")
-    st_map_emb(
-        df_mid,
-        df_mid[(df_mid["mapname"] == mapname)],
+    st.markdown(
+        "## User and Map Support",
+        help="The support is the number of plays associated to this user or map. "
+        "Therefore, if a user or map has a low support, the model's "
+        "prediction will be less accurate. Keep this in mind.",
     )
-    st.header("Player Embeddings")
-    st_player_emb(
-        df_uid,
-        df_uid[
-            (df_uid["username"] == username)  # & (df_uid["year"] == useryear)
-        ],
-    )
+    st.metric("User Support", usersupp)
+    st.metric("Map Support", mapsupp)
 
-
-st.markdown(
-    "## User and Map Support",
-    help="The support is the number of plays associated to this user or map. "
-    "Therefore, if a user or map has a low support, the model's "
-    "prediction will be less accurate. Keep this in mind.",
-)
-left, right = st.columns(2)
-left.metric("User Support", usersupp)
-right.metric("Map Support", mapsupp)
 
 map_pred = m.predict_map(f"{mapname}/{mapspeed}/7")
 user_pred = m.predict_user(f"{username}/{useryear}/7")
@@ -73,82 +56,12 @@ mean, lower_bound, upper_bound = (
     map_play_pred["lower_bound"],
     map_play_pred["upper_bound"],
 )
+bound_metrics(mean, lower_bound, upper_bound)
+with st.expander("Embedding Analysis"):
+    st_map_emb(df_mid, df_mid[(df_mid["mapname"] == mapname)])
+    st_player_emb(df_uid, df_uid[(df_uid["username"] == username)])
 
-st.markdown(
-    "## Bounds",
-    help="The bounds are the 75% confidence interval for the prediction. "
-    "Which means, if you played the map 100 times, "
-    "it's likely that 75 of those scores fall within the bounds.",
-)
-cols = st.columns(3)
-cols[0].metric(
-    "Lower Bound",
-    f"{lower_bound:.2%}",
-    delta=f"-{(mean - lower_bound):.2%}",
-)
-cols[1].metric("Accuracy", f"{mean:.2%}")
-cols[2].metric(
-    "Upper Bound",
-    f"{upper_bound:.2%}",
-    delta=f"{(upper_bound - mean):.2%}",
-)
+global_prediction(map_pred, user_pred, mean, lower_bound, upper_bound)
 
-st.markdown(
-    "## Global Statistics",
-    help="The following statistics are based on global predictions of the "
-    "selected user and map.",
-)
-
-import plotly.graph_objects as go
-
-st.markdown(f"### Accuracy Distribution\n")
-st.plotly_chart(
-    # Add a y vertical line at the mean
-    go.Figure(
-        [
-            go.Histogram(
-                name="Accuracy",
-                x=map_pred["mean"],
-            ),
-        ]
-    )
-    .update_layout(
-        title=f"Map Global Accuracy Distribution",
-        xaxis_title="Accuracy",
-        yaxis_title="Count",
-        xaxis=dict(range=[0.85, 1]),
-    )
-    .add_vline(x=mean, line=dict(color="red", width=2))
-    .add_vrect(
-        lower_bound,
-        upper_bound,
-        fillcolor="yellow",
-        opacity=0.2,
-        line=dict(width=0),
-    )
-)
-st.plotly_chart(
-    go.Figure(
-        [
-            go.Histogram(
-                name="Accuracy", x=user_pred["mean"], histnorm="probability"
-            ),
-        ]
-    )
-    .update_layout(
-        title=f"Player Global Accuracy Distribution",
-        xaxis_title="Accuracy",
-        yaxis_title="Count",
-        xaxis=dict(range=[0.85, 1]),
-        # format y axis as percent
-        yaxis=dict(tickformat=".0%"),
-    )
-    .add_vline(x=mean, line=dict(color="red", width=2))
-    .add_vrect(
-        lower_bound,
-        upper_bound,
-        fillcolor="yellow",
-        opacity=0.2,
-        line=dict(width=0),
-    )
-)
+with st.expander("Model Analysis"):
+    st_delta_to_acc(m)

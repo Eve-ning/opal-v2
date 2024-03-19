@@ -1,6 +1,8 @@
 import plotly.express as px
 import streamlit as st
 
+import plotly.graph_objects as go
+
 DAN_MAPPING = {
     "0th": 0,
     "1st": 1,
@@ -20,6 +22,7 @@ DAN_MAPPING = {
 
 
 def st_map_emb(df, highlight_map):
+    st.header("Map Embeddings")
     st.error(
         "Note that the embeddings dimensions do not have a fixed meaning. "
         "However, it's possible to interpret them as a measure of difficulty, "
@@ -35,13 +38,12 @@ def st_map_emb(df, highlight_map):
     )
 
     if dans_only:
-        df = df[
-            (
-                df["mapname"].str.contains("Regular Dan Phase")
-                | df["mapname"].str.contains("LN Dan Phase")
-            )
-            & (df["speed"] == 0)
-        ]
+        df = df.query(
+            "mapname.str.contains('Regular Dan Phase') | "
+            "mapname.str.contains('LN Dan Phase') & "
+            "speed == 0"
+        )
+
         # Extract the dan number and color
         name = df["mapname"] + " " + df["speed"].astype(str)
         name_text = (
@@ -78,7 +80,8 @@ def st_map_emb(df, highlight_map):
 
 
 def st_player_emb(df, highlight_user):
-    import plotly.graph_objects as go
+    st.header("Player Embeddings")
+    st.info("The size of the points is proportional to the year.")
 
     # Concatenate name and year for display on plotly
     year = highlight_user["year"]
@@ -87,19 +90,12 @@ def st_player_emb(df, highlight_user):
     year_scaled = year_scaled * 5 + 10
     st.plotly_chart(
         go.Figure(
-            px.density_contour(
-                df,
-                x="d0",
-                y="d1",
-            ),
+            px.density_contour(df, x="d0", y="d1"),
         ).add_scatter(
             x=highlight_user["d0"],
             y=highlight_user["d1"],
             mode="markers+lines",
-            marker=dict(
-                size=year_scaled,
-                color="red",
-            ),
+            marker=dict(size=year_scaled, color="red"),
             hoverinfo="text",
             hovertext=highlight_user["username"]
             + " "
