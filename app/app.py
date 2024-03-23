@@ -3,14 +3,14 @@ from pathlib import Path
 
 import streamlit as st
 
+PROJECT_DIR = Path(__file__).parents[1]
+sys.path.append(PROJECT_DIR.as_posix())
+
 from components.bound_metrics import bound_metrics
 from components.delta_to_acc import st_delta_to_acc
 from components.embeddings import st_map_emb, st_player_emb
 from components.global_prediction import global_prediction
 from components.select import st_select_model, st_select_user, st_select_map
-
-PROJECT_DIR = Path(__file__).parents[1]
-sys.path.append(PROJECT_DIR.as_posix())
 
 
 st.title("Dan Analysis")
