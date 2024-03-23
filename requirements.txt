@@ -2,6 +2,7 @@
 torch
 torchvision
 torchaudio
+pytorch-lightning
 plotly
 numpy
 pandas
