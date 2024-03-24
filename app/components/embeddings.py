@@ -24,7 +24,7 @@ DAN_MAPPING = {
 def st_map_emb(df, highlight_map):
     st.header("Map Embeddings")
     st.error(
-        "Note that the embeddings dimensions do not have a fixed meaning. "
+        "The embeddings dimensions do not have a fixed meaning. "
         "However, it's possible to interpret them as a measure of difficulty, "
         "where the larger the value, the harder the map."
     )
@@ -39,28 +39,25 @@ def st_map_emb(df, highlight_map):
 
     if dans_only:
         df = df.query(
-            "mapname.str.contains('Regular Dan Phase') | "
-            "mapname.str.contains('LN Dan Phase') & "
-            "speed == 0"
+            "(mapname.str.contains('Regular Dan Phase') | "
+            "mapname.str.contains('LN Dan Phase')) "
         )
 
         # Extract the dan number and color
-        name = df["mapname"] + " " + df["speed"].astype(str)
-        name_text = (
-            name.str.extract(r"\[\b(\w+)\b")
-            .replace(DAN_MAPPING)
-            .values.flatten()
-        )
-        name_color = name.str.extract(r"\-\s\b(\w+)\b").values.flatten()
+        df["danname"] = df["mapname"].str.extract(r"\[(\w+)\b")
+        df["dannum"] = df["danname"].replace(DAN_MAPPING)
+        df["dantype"] = df["mapname"].str.extract(r"\-\s\b(\w+)\b")
+        df["speedtxt"] = df["speed"].apply({-1: "HT", 0: "NM", 1: "DT"}.get)
         fig = px.scatter(
             data_frame=df,
             x="d0",
             y="d1",
-            hover_name=name,
+            hover_name=df["danname"] + " " + df["dantype"],
             size=[1] * len(df),
-            text=name_text,
-            color=name_color,
-        )
+            text="dannum",
+            color="dantype",
+            symbol="speedtxt",
+        ).update_layout(legend_title="Type, Mod")
     else:
         fig = px.density_contour(data_frame=df, x="d0", y="d1")
     st.plotly_chart(
@@ -68,7 +65,7 @@ def st_map_emb(df, highlight_map):
             x=highlight_map["d0"],
             y=highlight_map["d1"],
             mode="markers",
-            marker=dict(size=10, color="red"),
+            marker=dict(size=10, color="red", symbol=highlight_map["speed"]),
             hoverinfo="text",
             hovertext=highlight_map["mapname"]
             + " "
