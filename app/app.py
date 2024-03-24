@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+from sklearn.decomposition import PCA
 
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
@@ -19,6 +20,21 @@ st.title("Dan Analysis")
 with st.sidebar:
     m, model_id = st_select_model(PROJECT_DIR / "app")
     df_uid, df_mid = m.get_embeddings()
+    pca = PCA(
+        n_components=2,
+        whiten=True,
+        random_state=42,
+    )
+    do_pca = st.checkbox(
+        "Align Embeddings (PCA)",
+        help="Applying PCA extracts the most important dimensions "
+        "from the embeddings, where d0 will be aligned to the most important "
+        "feature and d1 the second most important. This alignment "
+        "improves interpretation, but will not change the model's prediction.",
+    )
+    if do_pca:
+        df_uid[["d0", "d1"]] = pca.fit_transform(df_uid[["d0", "d1"]])
+        df_mid[["d0", "d1"]] = pca.transform(df_mid[["d0", "d1"]])
     df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
     n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
     username, useryear = st_select_user(
