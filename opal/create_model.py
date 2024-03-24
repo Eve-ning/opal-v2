@@ -71,7 +71,7 @@ class Experiment:
     def trainer(self):
         return pl.Trainer(
             max_epochs=self.n_epochs,
-            accelerator="gpu",
+            accelerator="cpu",
             callbacks=[
                 ModelCheckpoint(monitor="val/rmse_loss"),
                 EarlyStopping(
@@ -82,7 +82,7 @@ class Experiment:
             ],
             logger=WandbLogger(
                 entity="evening",
-                project="opal-combined-emb",
+                project="opal",
                 # Gets only the dataclass fields
                 # Note: __dict__ will include properties
                 config={
@@ -135,8 +135,8 @@ if __name__ == "__main__":
     n_min_support = 50
     p_test = 0.10
     n_emb = 2
-    l1_loss_weight = 0
-    l2_loss_weight = 0
+    l1_loss_weight = 1e-7
+    l2_loss_weight = 1e-14
     lr = 1e-3
 
     exp_fn = lambda k: Experiment(
@@ -157,11 +157,11 @@ if __name__ == "__main__":
     exp.wandb_log_weights()
     wandb.finish()
 
-    # del exp
-    #
-    # exp = exp_fn(4)
-    # exp.fit()
-    # exp.wandb_log_weights()
-    # wandb.finish()
-    #
-    # del exp
+    del exp
+
+    exp = exp_fn(4)
+    exp.fit()
+    exp.wandb_log_weights()
+    wandb.finish()
+
+    del exp
