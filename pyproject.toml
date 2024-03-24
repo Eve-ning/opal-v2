@@ -13,6 +13,7 @@ python = ">=3.9,<3.9.7 || >3.9.7"
 torch = "^2.2.1"
 torchaudio = "^2.2.1"
 torchvision = "^0.17.1"
+pytorch-lightning = "^2.2.1"
 
 [tool.poetry.group.dev.dependencies]
 plotly = "^5.20.0"
