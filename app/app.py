@@ -15,7 +15,7 @@ from components.select import st_select_model, st_select_user, st_select_map
 
 
 st.title("Dan Analysis")
-
+KEYS = 7
 
 with st.sidebar:
     m, model_id = st_select_model(PROJECT_DIR / "app")
@@ -62,10 +62,21 @@ with st.sidebar:
     st.metric("User Support", usersupp)
     st.metric("Map Support", mapsupp)
 
+    st.header(":wave: Hey! [Try AlphaOsu!](https://alphaosu.keytoix.vip/)")
+    st.caption("AlphaOsu is a pp recommender system with a website UI. ")
+    st.caption(
+        "Opal doesn't require monetary support, but they do. "
+        "If you do enjoy using their services, "
+        "you can [support them](https://alphaosu.keytoix.vip/support)"
+    )
 
-map_pred = m.predict_map(f"{mapname}/{mapspeed}/7")
-user_pred = m.predict_user(f"{username}/{useryear}/7")
-map_play_pred = map_pred.loc[username, useryear, 7]
+st.success(
+    ":wave: Thanks for using Opal! "
+    "This is still in early access, and will only support 7 keys only."
+)
+map_pred = m.predict_map(f"{mapname}/{mapspeed}/{KEYS}")
+user_pred = m.predict_user(f"{username}/{useryear}/{KEYS}")
+map_play_pred = map_pred.loc[username, useryear, KEYS]
 
 mean, lower_bound, upper_bound = (
     map_play_pred["mean"],
