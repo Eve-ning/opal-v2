@@ -21,7 +21,7 @@ DAN_MAPPING = {
 }
 
 
-def st_map_emb(df, highlight_map):
+def st_map_emb(df, highlight_map, enable_dans: bool = False):
     st.header("Map Embeddings")
     st.error(
         "The embeddings dimensions do not have a fixed meaning. "
@@ -29,9 +29,10 @@ def st_map_emb(df, highlight_map):
         "where the larger the value, the harder the map."
     )
     dans_only = st.checkbox(
-        "Dans Only",
+        "Dans Only (Only for 7K)",
         value=False,
-        help="Dans are the Dan Courses in the game."
+        disabled=not enable_dans,
+        help="Dans are the Dan Courses in the game. "
         "Each level is a full course of different types of "
         "patterns. It's a way to measure a player's skill. "
         "We use this as a measure to sanity check the embeddings.",

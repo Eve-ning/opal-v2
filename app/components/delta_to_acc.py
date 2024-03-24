@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel
 
 
-def st_delta_to_acc(m: "DeltaModel"):
-    x_delta = torch.linspace(-5, 5, 100)
+def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
+    x_delta = torch.linspace(*xlim, 100)
     dims = m.emb_uid.weight.shape[1]
     y_means = []
     y_vars = []

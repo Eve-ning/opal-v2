@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
-def global_prediction(map_pred, user_pred, mean, lower_bound, upper_bound):
+def st_global_preds(map_pred, user_pred, mean, lower_bound, upper_bound):
     st.markdown(
         "## Global Statistics",
         help="The following statistics are based on global predictions of the "
