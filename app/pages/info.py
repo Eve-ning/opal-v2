@@ -2,25 +2,27 @@ import streamlit as st
 
 st.title("Information")
 st.header("How it works ELI5")
-st.write(
-    r"""
-    
 st.warning(
     "We say distance, but it's actually displacement, as it can be negative."
 )
-As a simple example, lets put 2 maps and a player on a line.
+st.write(
+    r"""
+As a simple example, lets put 2 maps and a player on a line. 
+**By placing any non-numerical object on a line, we call this operation
+an embedding.** 
 
-The further right a map is, the harder it is, 
-and the further right a player is, the better they are.
+- The **further right** a map is, the **harder** it is, 
+- The **further right** a player is, the **better** they are.
 ```
 . ┌────┐  ┌────┐  ┌────┐
 ──┤ M1 ├──┤ M2 ├──┤ P1 ├──►
   └────┘  └────┘  └────┘
-    ◄────── ──────►
-Lower Skill Higher Skill
+     ◄────── ──────►
+ Lower Skill Higher Skill
 ```
 
-Then the distance between a map and player is related to accuracy.
+We assume that the distance between a map and player is related to accuracy
+in some manner.
 ```
 . P1 - M1 = Higher Acc
    ◄──────────────────►
@@ -30,21 +32,27 @@ Then the distance between a map and player is related to accuracy.
            ◄──────────►
         P1 - M2 = Lower Acc
 ```
-I believe it's intuitive that larger distances indicates larger skill gap,
-therefore, higher accuracies.   
 
-By using a ML model to fit this distance to an accuracy,
-we get a model that learns the best location to place these maps and players
-such that the constraint is best satisfied.
+> Larger distances indicates larger skill gap, therefore, higher accuracies.   
+
+However, the distance can't be interpreted directly as accuracy.
+Therefore, we train a model to learn the relationship between
+distance and accuracy, with the constraint that larger distances should yield
+larger accuracies.
+
+As a result, we train a model that
+- learns the **best location** to place these maps and players
+- figures out **the relationship** between the distance and accuracy
 
 ### A 2nd Dimension
 
-However, maps and players are much more complex.
-They can be LN or RC-difficulty biased: 
+In practice, maps and players are much more complex.
+As an example, they can be LN or RC-difficulty biased: 
 better at one type of difficulty than the other.
 
-In fact, we can create a scenario where the distance between $M_1$ and $P_1$,
-and the distance between $M_2$ and $P_1$ are the same.
+With reference to the above example, we can create a scenario where the
+distance between $M_1$ and $P_1$, and between $M_2$ and $P_1$ are the same
+despite $M_2 > M_1$ on the RC-axis
 
 ```
 .            ▲ LN
@@ -75,6 +83,16 @@ dimension represents.
 It's up to the creator to decide if they want an explainable model, 
 or an accurate model.
 
+### Difficulties with separating RC and LN
+
+In practice, it's hard to separate RC and LN, as they're often intertwined,
+with no unbiased metrics to separate them.
+
+The closest metric is possibly
+the ratio of RC to LN notes, but it often runs into edge cases where maps
+are predominantly LNs because the mapper uses mini-LNs, which should lean
+towards RC difficulty. As mini-LNs are denser than 
+LNs in actual LN maps, ratio-based metrics biases the resulting model.
 
 ## How it works ELI(a Data Scientist)
 
@@ -128,6 +146,7 @@ vector to another space.
 Now that we have a common space, we can compare the vectors.
 
 We'll denote this difference as $Q - N = \Delta \in\mathbb{R}^{n_D}$.
+> We use Q and N as they are the next alphabet after P and M, respectively.
 
 ### Mapping $\Delta$ to Accuracy
 
@@ -141,18 +160,16 @@ In order to achieve this, we can use a neural network. However, to satisfy
 constraint 2, we need to force all weights to be positive, to guarantee a
 monotonically increasing function.
 
-To do so, we use the exponential of
-the weights when we apply the linear transformation, this allows the weights
-to be positive, while still allowing the model to learn non-linearity
+To do so, we use the **softplus** weights during a fully connected layer.
+This forces the resulting weights to be positive,
+while still allowing the model to learn a non-positive weight.
 
 The architecture is simple, but it works:
 
 $$
 \Delta
-\rightarrow \text{ExpLinear(D, N)}
-\rightarrow \text{ReLU}
-\rightarrow \text{ExpLinear(N, 1)}
-\rightarrow \text{Sigmoid}
+\rightarrow \text{PositiveLinear(D, N)}
+\rightarrow \text{PositiveLinear(N, 1)}
 \rightarrow \text{Acc}
 $$
 
@@ -189,9 +206,71 @@ $$
                                       └─────┘
 ```
 
+Where $f$ is the softplus activation function.
+
 We'll denote this transform as $A(\Delta)=\text{Acc}$.
 
-### LN Dimension Weighting 
+## Uncertainty
+
+Reference: [Deep Ensembles](https://arxiv.org/abs/1612.01474)
+
+> We didn't use ensembles yet, as we're in early access, it's just 1 model.
+
+The method of estimating uncertainty is through predicting 2 metrics of a
+distribution, then minimizing its Negative Log Likelihood Loss (NLLLoss).
+We use a Laplace distribution, over the original Normal Distribution as
+we will explain later.
+
+The Laplace distribution is defined as:
+
+$$
+\text{Laplace}(x|\mu,b)=\frac{1}{2b}\exp\left(-\frac{|x-\mu|}{b}\right)
+$$
+
+Where $\mu$ is the mean, and $b$ is the scale parameter.
+Therefore, we just need to predict $\mu$ and $b$.
+
+Notice that because had a positive constraint on the weights, the model
+is forced to learn a monotonic increasing function between $\Delta$ and
+the $\mu$. However, larger $\Delta$ does not necessarily mean larger $b$.
+The simple solution is to create a separate branch for $b$ which you can see
+in the `delta_model.py` code.
+
+We can be more liberal with the $b$ transformation as we don't have any 
+specific constraints on it.
+
+```python
+self.delta_to_acc_mean = nn.Sequential(
+    PositiveLinear(n_emb, n_delta_mean_neurons),
+    nn.Tanh(),
+    PositiveLinear(n_delta_mean_neurons, 1),
+)
+self.delta_to_acc_var = nn.Sequential(
+    nn.Linear(n_emb, n_delta_var_neurons),
+    nn.ReLU(),
+    nn.Linear(n_delta_var_neurons, n_delta_var_neurons),
+    nn.ReLU(),
+    nn.Linear(n_delta_var_neurons, 1),
+)
+```
+
+### Laplace Distribution over Normal Distribution
+
+The Laplace distribution is used over the Normal distribution as it has
+heavier tails, which means it's kinder to outliers. This is important as
+we observe that many scores are outliers, especially for gimmick maps and
+niche players.
+
+Mathematically speaking, because the Laplace distribution has a heavier tail,
+the NLLLoss is smaller for outliers, which means the model is less likely to
+shift drastically because a score is unexpectedly high or low. 
+
+# Appendix
+
+## LN Dimension Weighting 
+
+> This attempt didn't work as explained in
+> *Difficulties with separating RC and LN*.
 
 Fortunately, each map embeds information on its LN density. 
 That means we can assume that for a LN-heavy map, the LN dimension contributes
@@ -215,60 +294,7 @@ $$
 By doing so, we too train model alignment to the expected
 LN, RC embeddings, in turn, improves interpretability.
 
-### Interpreting Map and Player Embeddings
 
-Unfortunately, the Map and Player embeddings aren't easily interpretable, 
-this is because we only made use of their difference, but never their absolute
-locations.
 
-For example, if we forced $Q - N = 1$, $Q$ and $N$ can be any number, as long
-as their difference is 1. However, if we'd try to fix some values, not only 
-would it be complex, it'll interfere with the model's ability to learn.
-Therefore, the approach, shouldn't be to force the embeddings to be
-interpretable, but to use the embeddings, then preprocess it to make sense.
-
-A simple solution is to concatenate the embeddings, however, it can be a bit 
-odd that for a map and player with the same embeddings, which yields 
-$\Delta=0$, the accuracy is some arbitrary value. Thus, it's good to set some
-constraints on the embeddings, such that $\Delta=0$ yields $\text{Acc}=0.95$, 
-which is a common metric to show that the player is able to play the map well.
-
-We want to solve the following problem:
-
-$$
-Acc = 0.95 = \sum_T^{RC,LN} A_T(Q_T-N_T + \text{Bias}_T)
-$$
-
-This 
-
-Let's say we want to show $Q, N$ (the embeddings), in the range $\in[0,1]$,
-while maintaining some sort of meaning with their differences. Before that, we
-review 
-
-$$
-\begin{align*}
-\text{Acc}&=\rho A(Q-N)\\
-\frac{\text{Acc}}{\rho}&=A(Q-N)\\
-A^{-1}\left(\frac{\text{Acc}}{\rho}\right)&=Q-N\\
-N + A^{-1}\left(\frac{\text{Acc}}{\rho}\right)&=Q\\
-A^{-1}\left(\frac{\text{Acc}}{\rho}\right) + Q&=N\\
-\end{align*} 
-$$
-
-With this formula, given a map, and an accuracy, we can find the player 
-embedding that is expected to achieve that accuracy.
-
-Furthermore, we can introduce an inequality constraint, such that we find all
-players that are expected to achieve an accuracy greater than some threshold.
-
-$$
-\begin{align*}
-\text{Threshold}&\leq\rho A(Q-N)\\
-\frac{\text{Threshold}}{\rho}&\leq A(Q-N)\\
-A^{-1}\left(\frac{\text{Threshold}}{\rho}\right)&\leq Q-N\\
-N + A^{-1}\left(\frac{\text{Threshold}}{\rho}\right)&\leq Q\\
-A^{-1}\left(\frac{\text{Threshold}}{\rho}\right) + Q&\leq N\\
-\end{align*}
-$$
 """
 )
