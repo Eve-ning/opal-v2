@@ -1,16 +1,18 @@
+import re
 import sys
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from sklearn.decomposition import PCA
 
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
 
-from components.bound_metrics import bound_metrics
+from components.bound_metrics import st_boundary_metrics
 from components.delta_to_acc import st_delta_to_acc
 from components.embeddings import st_map_emb, st_player_emb
-from components.global_prediction import global_prediction
+from components.global_prediction import st_global_preds
 from components.select import st_select_model, st_select_user, st_select_map
 
 st.set_page_config(
@@ -19,27 +21,30 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 st.title("Opal: Delta Embedding Approach")
-KEYS = 7
 
 with st.sidebar:
     m, model_id = st_select_model(PROJECT_DIR / "app")
+
+    # Extract all numerical values from the model_id as keys
+    KEYS = int(re.search(r"\d+", model_id).group())
+    st.caption(f"Model ID: {model_id}, Keys: {KEYS}")
+
     df_uid, df_mid = m.get_embeddings()
-    pca = PCA(
-        n_components=2,
-        whiten=True,
-        random_state=42,
-    )
-    do_pca = st.checkbox(
+    df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
+
+    pca = PCA(n_components=2, whiten=True, random_state=42)
+    if st.checkbox(
         "Align Embeddings (PCA)",
         help="Applying PCA extracts the most important dimensions "
         "from the embeddings, where d0 will be aligned to the most important "
         "feature and d1 the second most important. This alignment "
-        "improves interpretation, but will not change the model's prediction.",
-    )
-    if do_pca:
-        df_uid[["d0", "d1"]] = pca.fit_transform(df_uid[["d0", "d1"]])
+        "improves interpretation, but will not change the model's prediction. "
+        "PCA may flip the axes, so the interpretation may be different.",
+    ):
+        pca.fit(pd.concat([df_uid[["d0", "d1"]], df_mid[["d0", "d1"]]]))
+        df_uid[["d0", "d1"]] = pca.transform(df_uid[["d0", "d1"]])
         df_mid[["d0", "d1"]] = pca.transform(df_mid[["d0", "d1"]])
-    df_uid, df_mid = df_uid.reset_index(), df_mid.reset_index()
+
     n_uid, n_mid = len(m.uid_classes), len(m.mid_classes)
     username, useryear = st_select_user(
         name_opts=df_uid["username"],
@@ -87,14 +92,29 @@ mean, lower_bound, upper_bound = (
     map_play_pred["lower_bound"],
     map_play_pred["upper_bound"],
 )
-bound_metrics(mean, lower_bound, upper_bound)
-with st.expander("Embedding Analysis"):
-    st_map_emb(df_mid, df_mid[(df_mid["mapname"] == mapname)])
-    st_player_emb(df_uid, df_uid[(df_uid["username"] == username)])
+st_boundary_metrics(mean, lower_bound, upper_bound)
 
-global_prediction(map_pred, user_pred, mean, lower_bound, upper_bound)
+with st.expander("Embedding Analysis"):
+    st_map_emb(
+        df_mid,
+        highlight_map=df_mid[(df_mid["mapname"] == mapname)],
+        # We're not supporting 4K dans yet since they don't have leaderboards
+        enable_dans=KEYS == 7,
+    )
+    st_player_emb(
+        df_uid,
+        highlight_user=df_uid[(df_uid["username"] == username)],
+    )
+
+st_global_preds(map_pred, user_pred, mean, lower_bound, upper_bound)
 
 with st.expander("Model Analysis"):
-    st_delta_to_acc(m)
+    xlim = st.slider(
+        "Delta Range (Debug)",
+        min_value=5,
+        max_value=10,
+        value=7,
+    )
+    st_delta_to_acc(m, xlim=(-xlim, xlim))
 
 st.caption("Developed by [Evening](https://twitter.com/dev_evening).")
