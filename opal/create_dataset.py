@@ -118,7 +118,7 @@ def write_dataset(df, conn):
 
 def create_dataset():
     conn = db_conn()
-    t = tqdm(total=5)
+    t = tqdm(total=6)
 
     t.set_description("Reading maps")
     df_maps = read_maps(conn)
@@ -135,6 +135,14 @@ def create_dataset():
     t.set_description("Merging")
     df = merge(df_maps, df_plays, df_users).assign(
         rand=lambda x: np.random.uniform(0, 1, len(x)),
+    )
+    t.update(1)
+
+    t.set_description("Removing duplicates")
+    # For some reason, there are dupes, we'll remove the scores that are
+    # poorer in accuracy
+    df = df.sort_values("accuracy", ascending=False).drop_duplicates(
+        subset=["uid", "mid"], keep="first"
     )
     t.update(1)
 
