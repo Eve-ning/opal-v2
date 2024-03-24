@@ -13,7 +13,11 @@ from components.embeddings import st_map_emb, st_player_emb
 from components.global_prediction import global_prediction
 from components.select import st_select_model, st_select_user, st_select_map
 
-
+st.set_page_config(
+    page_title="Opal: Delta Embedding Approach",
+    page_icon="☄️",
+    initial_sidebar_state="expanded",
+)
 st.title("Opal: Delta Embedding Approach")
 KEYS = 7
 
@@ -92,3 +96,5 @@ global_prediction(map_pred, user_pred, mean, lower_bound, upper_bound)
 
 with st.expander("Model Analysis"):
     st_delta_to_acc(m)
+
+st.caption("Developed by [Evening](https://twitter.com/dev_evening).")
