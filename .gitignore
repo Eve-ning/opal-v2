@@ -163,3 +163,5 @@ cython_debug/
 *.yaml
 *.csv
 wandb/
+# Unignore app/**/*.ckpt
+!app/**/*.ckpt
