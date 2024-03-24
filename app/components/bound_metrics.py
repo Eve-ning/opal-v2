@@ -1,7 +1,7 @@
 import streamlit as st
 
 
-def bound_metrics(mean, lower_bound, upper_bound):
+def st_boundary_metrics(mean, lower_bound, upper_bound):
     st.markdown(
         "## 75% Confidence Prediction Bounds",
         help="The bounds are the 75% confidence interval for the prediction. "
