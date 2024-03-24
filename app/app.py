@@ -14,7 +14,7 @@ from components.global_prediction import global_prediction
 from components.select import st_select_model, st_select_user, st_select_map
 
 
-st.title("Dan Analysis")
+st.title("Opal: Delta Embedding Approach")
 KEYS = 7
 
 with st.sidebar:
