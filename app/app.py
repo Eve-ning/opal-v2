@@ -81,7 +81,8 @@ with st.sidebar:
 
 st.success(
     ":wave: Thanks for using Opal! "
-    "This is still in early access, and will only support 7 keys only."
+    "This is still in early access, we're improving things as we go along, and we appreciate feedback! "
+    "Let us (@dev_evening on Twitter) know how it can be better." 
 )
 map_pred = m.predict_map(f"{mapname}/{mapspeed}/{KEYS}")
 user_pred = m.predict_user(f"{username}/{useryear}/{KEYS}")
