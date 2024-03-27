@@ -11,9 +11,8 @@ if TYPE_CHECKING:
 
 def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
     x_delta = torch.linspace(*xlim, 100)
-    dims = m.emb_uid.weight.shape[1]
+    dims = m.emb_uid_mean.weight.shape[1]
     y_means = []
-    y_vars = []
     for d in range(dims):
         # Create a zeroed tensor
         # Then replace the dth element with x_delta
@@ -21,9 +20,7 @@ def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
         x_delta_d = torch.zeros(len(x_delta), dims)
         x_delta_d[:, d] = x_delta
         y_mean = m.delta_to_acc_mean(x_delta_d).squeeze()
-        y_var = m.delta_to_acc_var(x_delta_d).squeeze()
         y_means.append(y_mean)
-        y_vars.append(y_var)
 
     st.header("Delta to Accuracy Mapping")
     st.write(
@@ -41,8 +38,7 @@ def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
         parameter is related to the variance by $\\sigma^2 = 2s^2$.
         """
     )
-    left, right = st.columns(2)
-    left.plotly_chart(
+    st.plotly_chart(
         go.Figure(
             data=[
                 go.Scatter(
@@ -58,26 +54,6 @@ def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
                 dict(
                     xaxis_title="Delta",
                     yaxis_title="Accuracy Mean",
-                    legend_title="Type",
-                )
-            ),
-        ),
-        use_container_width=True,
-    )
-    right.plotly_chart(
-        go.Figure(
-            data=[
-                go.Scatter(
-                    x=x_delta,
-                    y=(softplus(y) ** 2 * 2).detach().numpy(),
-                    name=f"D{e}",
-                )
-                for e, y in enumerate(y_vars)
-            ],
-            layout=go.Layout(
-                dict(
-                    xaxis_title="Delta",
-                    yaxis_title="Accuracy Variance",
                     legend_title="Type",
                 )
             ),

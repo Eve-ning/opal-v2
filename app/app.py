@@ -6,9 +6,12 @@ import pandas as pd
 import streamlit as st
 from sklearn.decomposition import PCA
 
+
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
 
+from components.support import st_support
+from components.uncertainty import st_uncertainty
 from components.bound_metrics import st_boundary_metrics
 from components.delta_to_acc import st_delta_to_acc
 from components.embeddings import st_map_emb, st_player_emb
@@ -50,27 +53,20 @@ with st.sidebar:
         name_opts=df_uid["username"],
         year_opts=df_uid["year"],
     )
-    usersupp = df_uid[
-        (df_uid["username"] == username) & (df_uid["year"] == useryear)
-    ]["support"]
 
     mapname, mapspeed = st_select_map(
         name_opts=df_mid["mapname"],
         speed_opts=df_mid["speed"],
     )
 
-    mapsupp = df_mid[
+    df_mid["dv0_q"] = df_mid["dv0"].rank(pct=True)
+    df_uid["dv0_q"] = df_uid["dv0"].rank(pct=True)
+    user = df_uid[
+        (df_uid["username"] == username) & (df_uid["year"] == useryear)
+    ]
+    map = df_mid[
         (df_mid["mapname"] == mapname) & (df_mid["speed"] == mapspeed)
-    ]["support"]
-    st.markdown(
-        "## User and Map Support",
-        help="The support is the number of plays associated to this user or map. "
-        "Therefore, if a user or map has a low support, the model's "
-        "prediction will be less accurate. Keep this in mind.",
-    )
-    st.metric("User Support", usersupp)
-    st.metric("Map Support", mapsupp)
-
+    ]
     st.header(":wave: Hey! [Try AlphaOsu!](https://alphaosu.keytoix.vip/)")
     st.caption("AlphaOsu is a pp recommender system with a website UI. ")
     st.caption(
@@ -93,6 +89,7 @@ mean, lower_bound, upper_bound = (
     map_play_pred["upper_bound"],
 )
 st_boundary_metrics(mean, lower_bound, upper_bound)
+st_uncertainty(user, map)
 
 with st.expander("Embedding Analysis"):
     st_map_emb(
@@ -108,7 +105,7 @@ with st.expander("Embedding Analysis"):
 
 st_global_preds(map_pred, user_pred, mean, lower_bound, upper_bound)
 
-with st.expander("Model Analysis"):
+with st.expander("Debugging Tools"):
     xlim = st.slider(
         "Delta Range (Debug)",
         min_value=5,
@@ -116,5 +113,5 @@ with st.expander("Model Analysis"):
         value=7,
     )
     st_delta_to_acc(m, xlim=(-xlim, xlim))
-
+    st_support(user, map)
 st.caption("Developed by [Evening](https://twitter.com/dev_evening).")
