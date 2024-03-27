@@ -9,5 +9,5 @@ def st_support(user, map):
         "prediction will be less accurate. Keep this in mind.",
     )
     left, right = st.columns(2)
-    left.metric("User", user["support"])
-    right.metric("Map", map["support"])
+    left.metric("User", int(user["support"].iloc[0]))
+    right.metric("Map", int(map["support"].iloc[0]))

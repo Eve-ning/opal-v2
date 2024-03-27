@@ -32,8 +32,8 @@ def st_confidence(user, map):
         "It is determined by both the user's and map's confidence.",
     )
 
-    userq = float(user["confidence_q"])
-    mapq = float(map["confidence_q"])
+    userq = float(user["confidence_q"].iloc[0])
+    mapq = float(map["confidence_q"].iloc[0])
 
     left, right = st.columns(2)
     right.metric("User", float_to_str_mapping(userq))
