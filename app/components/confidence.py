@@ -1,10 +1,10 @@
 import streamlit as st
 
 mappings = {
-    (0.0, 0.1): "Very Low",
-    (0.1, 0.25): "Low",
-    (0.25, 0.50): "Medium",
-    (0.50, 1.0): "High",
+    (0.0, 0.01): "Very Low",
+    (0.01, 0.05): "Low",
+    (0.05, 0.1): "Medium",
+    (0.1, 1.0): "High",
 }
 
 
