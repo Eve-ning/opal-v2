@@ -11,7 +11,7 @@ PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
 
 from components.support import st_support
-from components.uncertainty import st_uncertainty
+from components.confidence import st_confidence
 from components.bound_metrics import st_boundary_metrics
 from components.delta_to_acc import st_delta_to_acc
 from components.embeddings import st_map_emb, st_player_emb
@@ -59,8 +59,8 @@ with st.sidebar:
         speed_opts=df_mid["speed"],
     )
 
-    df_mid["dv0_q"] = df_mid["dv0"].rank(pct=True)
-    df_uid["dv0_q"] = df_uid["dv0"].rank(pct=True)
+    df_mid["confidence_q"] = df_mid["dv0"].rank(pct=True, ascending=False)
+    df_uid["confidence_q"] = df_uid["dv0"].rank(pct=True, ascending=False)
     user = df_uid[
         (df_uid["username"] == username) & (df_uid["year"] == useryear)
     ]
@@ -89,7 +89,7 @@ mean, lower_bound, upper_bound = (
     map_play_pred["upper_bound"],
 )
 st_boundary_metrics(mean, lower_bound, upper_bound)
-st_uncertainty(user, map)
+st_confidence(user, map)
 
 with st.expander("Embedding Analysis"):
     st_map_emb(
@@ -114,4 +114,5 @@ with st.expander("Debugging Tools"):
     )
     st_delta_to_acc(m, xlim=(-xlim, xlim))
     st_support(user, map)
+
 st.caption("Developed by [Evening](https://twitter.com/dev_evening).")

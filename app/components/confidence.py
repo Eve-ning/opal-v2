@@ -1,10 +1,10 @@
 import streamlit as st
 
 mappings = {
-    (0.0, 0.5): "High",
-    (0.5, 0.8): "Medium",
-    (0.8, 0.95): "Low",
-    (0.95, 1.0): "Very Low",
+    (0.0, 0.1): "Very Low",
+    (0.1, 0.25): "Low",
+    (0.25, 0.50): "Medium",
+    (0.50, 1.0): "High",
 }
 
 
@@ -21,20 +21,19 @@ def float_to_str_mapping(value):
     """
     for (low, high), label in mappings.items():
         if low <= value < high:
-            return f"{label} : {value:.2f}"
+            return f"{label} ({value:.2f})"
     return "Unknown"
 
 
-def st_uncertainty(user, map):
+def st_confidence(user, map):
     st.subheader(
         "Prediction Confidence",
-        help="The prediction confidence measures how confident the model is "
-        "in its prediction. The higher the confidence, the more accurate "
-        "the prediction is.",
+        help="The prediction confidence measures how confident the model is. "
+        "It is determined by both the user's and map's confidence.",
     )
 
-    userq = float(user["dv0_q"])
-    mapq = float(map["dv0_q"])
+    userq = float(user["confidence_q"])
+    mapq = float(map["confidence_q"])
 
     left, right = st.columns(2)
     right.metric("User", float_to_str_mapping(userq))
