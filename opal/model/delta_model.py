@@ -22,7 +22,8 @@ class DeltaModel(pl.LightningModule):
         qt_acc: QuantileTransformer,
         n_uid_support: list,
         n_mid_support: list,
-        n_emb: int = 2,
+        n_emb_mean: int = 2,
+        n_emb_var: int = 1,
         n_delta_mean_neurons: int = 4,
         n_delta_var_neurons: int = 20,
         lr: float = 0.003,
@@ -37,7 +38,7 @@ class DeltaModel(pl.LightningModule):
             qt_acc: Quantile Transformer for Accuracy
             n_uid_support: Number of Beatmaps each User has played
             n_mid_support: Number of Users each Beatmap has scores on
-            n_emb: Number of Embedding Dimensions
+            n_emb_mean: Number of Embedding Dimensions
             n_delta_mean_neurons: Number of Neurons for the Delta Mean
                 Estimation
             n_delta_var_neurons: Number of Neurons for the  Delta Variance
@@ -68,44 +69,54 @@ class DeltaModel(pl.LightningModule):
         n_mid = len(le_mid.classes_)
 
         # Embeddings for User and Beatmap IDs
-        self.emb_uid = nn.Embedding(n_uid, n_emb)
-        self.emb_mid = nn.Embedding(n_mid, n_emb)
+        self.emb_uid_mean = nn.Embedding(n_uid, n_emb_mean)
+        self.emb_mid_mean = nn.Embedding(n_mid, n_emb_mean)
+        self.emb_uid_var = nn.Embedding(n_uid, n_emb_var)
+        self.emb_mid_var = nn.Embedding(n_mid, n_emb_var)
 
         # Batch Normalization for Embedding Differences
-        self.bn = nn.BatchNorm1d(n_emb, affine=False)
+        self.bn_mean = nn.BatchNorm1d(n_emb_mean, affine=False)
+        self.bn_var = nn.BatchNorm1d(n_emb_var, affine=False)
 
         # Linear Layers for Embedding Differences to Accuracy Mean and Variance
         # The positive linear layer ensures the estimated function is
         # monotonic increasing
         self.delta_to_acc_mean = nn.Sequential(
-            PositiveLinear(n_emb, n_delta_mean_neurons),
+            PositiveLinear(n_emb_mean, n_delta_mean_neurons),
             nn.Tanh(),
             PositiveLinear(n_delta_mean_neurons, 1),
         )
         self.delta_to_acc_var = nn.Sequential(
-            nn.Linear(n_emb, n_delta_var_neurons),
-            nn.ReLU(),
-            nn.Linear(n_delta_var_neurons, n_delta_var_neurons),
-            nn.ReLU(),
-            nn.Linear(n_delta_var_neurons, 1),
+            PositiveLinear(n_emb_var, n_delta_var_neurons),
+            nn.Softplus(),
+            PositiveLinear(n_delta_var_neurons, n_delta_var_neurons),
+            nn.Softplus(),
+            PositiveLinear(n_delta_var_neurons, 1),
         )
 
         self.save_hyperparameters()
 
     def forward(self, x_uid, x_mid):
         # Convert the One-Hot Encoded User ID and Beatmap ID to Embeddings
-        x_uid = self.emb_uid(x_uid)
-        x_mid = self.emb_mid(x_mid)
+        x_uid_mean = self.emb_uid_mean(x_uid)
+        x_mid_mean = self.emb_mid_mean(x_mid)
+
+        x_uid_var = self.emb_uid_var(x_uid)
+        x_mid_var = self.emb_mid_var(x_mid)
 
         # Calculate the difference between the User and Beatmap ID Embeddings
-        x_delta = x_uid - x_mid
+        x_delta = x_uid_mean - x_mid_mean
+
+        # Get the sum of the User and Beatmap ID Embeddings for variance
+        x_sum = x_uid_var + x_mid_var
 
         # Normalize the Embedding Differences
-        x_delta = self.bn(x_delta)
+        x_delta = self.bn_mean(x_delta)
+        x_sum = self.bn_var(x_sum)
 
         # Convert the Embedding Differences to Accuracy Mean and Variance
         y_mean = self.delta_to_acc_mean(x_delta).squeeze()
-        y_var = softplus(self.delta_to_acc_var(x_delta)).squeeze()
+        y_var = softplus(self.delta_to_acc_var(x_sum)).squeeze()
 
         return y_mean, y_var
 
@@ -171,8 +182,8 @@ class DeltaModel(pl.LightningModule):
         )
         # Add l1 regularization to the embeddings
         l1 = (
-            torch.exp(self.emb_uid.weight).sum()
-            + torch.exp(self.emb_mid.weight).sum()
+            torch.exp(self.emb_uid_mean.weight).sum()
+            + torch.exp(self.emb_mid_mean.weight).sum()
         )
         self.log("train/l1_loss", l1, prog_bar=True)
         l2 = l1**2
@@ -234,12 +245,15 @@ class DeltaModel(pl.LightningModule):
             The Support is the number of scores each User and Beatmap is
             associated with.
         """
-        uid = self.emb_uid.weight.detach().numpy()
-        mid = self.emb_mid.weight.detach().numpy()
+        uid_mean = self.emb_uid_mean.weight.detach().numpy()
+        mid_mean = self.emb_mid_mean.weight.detach().numpy()
+        uid_var = self.emb_uid_var.weight.detach().numpy()
+        mid_var = self.emb_mid_var.weight.detach().numpy()
 
         df_emb_uid = pd.DataFrame(
             {
-                **{f"d{k}": emb for k, emb in enumerate(uid.T)},
+                **{f"d{k}": emb for k, emb in enumerate(uid_mean.T)},
+                **{f"dv{k}": emb for k, emb in enumerate(uid_var.T)},
                 **{"support": self.n_uid_support},
             },
             index=self.multi_index_uid(),
@@ -247,7 +261,8 @@ class DeltaModel(pl.LightningModule):
 
         df_emb_mid = pd.DataFrame(
             {
-                **{f"d{k}": emb for k, emb in enumerate(mid.T)},
+                **{f"d{k}": emb for k, emb in enumerate(mid_mean.T)},
+                **{f"dv{k}": emb for k, emb in enumerate(mid_var.T)},
                 **{"support": self.n_mid_support},
             },
             index=self.multi_index_mid(),

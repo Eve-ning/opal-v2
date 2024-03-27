@@ -3,7 +3,7 @@ import streamlit as st
 
 def st_boundary_metrics(mean, lower_bound, upper_bound):
     st.markdown(
-        "## 75% Confidence Prediction Bounds",
+        "## Accuracy Prediction",
         help="The bounds are the 75% confidence interval for the prediction. "
         "Which means, if you played the map 100 times, "
         "it's likely that 75 of those scores fall within the bounds.",

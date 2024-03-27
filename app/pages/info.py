@@ -230,29 +230,19 @@ $$
 Where $\mu$ is the mean, and $b$ is the scale parameter.
 Therefore, we just need to predict $\mu$ and $b$.
 
-Notice that because had a positive constraint on the weights, the model
-is forced to learn a monotonic increasing function between $\Delta$ and
-the $\mu$. However, larger $\Delta$ does not necessarily mean larger $b$.
-The simple solution is to create a separate branch for $b$ which you can see
-in the `delta_model.py` code.
+We assert that the variance and mean are entirely independent, and therefore
+we use 2 separate embeddings to estimate them. Therefore, each user and map
+actually has 2 embeddings, one for the mean and one for the variance.
 
-We can be more liberal with the $b$ transformation as we don't have any 
-specific constraints on it.
+For the mean, it's still the same, we use the difference of the "mean" 
+embeddings to predict the mean of the Laplace distribution.
 
-```python
-self.delta_to_acc_mean = nn.Sequential(
-    PositiveLinear(n_emb, n_delta_mean_neurons),
-    nn.Tanh(),
-    PositiveLinear(n_delta_mean_neurons, 1),
-)
-self.delta_to_acc_var = nn.Sequential(
-    nn.Linear(n_emb, n_delta_var_neurons),
-    nn.ReLU(),
-    nn.Linear(n_delta_var_neurons, n_delta_var_neurons),
-    nn.ReLU(),
-    nn.Linear(n_delta_var_neurons, 1),
-)
-```
+For variance, we use the sum of the "variance" embeddings to predict the
+variance of the Laplace distribution. This sum is then passed through another
+neural network that's also monotonically increasing constrained for
+interpretability. Specifically, we only used 1 dimension for variance, as a 
+means of dimensionality reduction. We believe that it may reduce precision, 
+though it's a trade-off for interpretability.
 
 ### Laplace Distribution over Normal Distribution
 

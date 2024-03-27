@@ -62,7 +62,7 @@ class Experiment:
             qt_acc=self.datamodule.qt_acc,
             n_uid_support=self.datamodule.n_uid_support,
             n_mid_support=self.datamodule.n_mid_support,
-            n_emb=self.n_emb,
+            n_emb_mean=self.n_emb,
             l1_loss_weight=self.l1_loss_weight,
             l2_loss_weight=self.l2_loss_weight,
         )
