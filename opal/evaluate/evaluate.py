@@ -1,6 +1,6 @@
 import pandas as pd
 import torch
-from pytorch_lightning import LightningModule
+from lightning import LightningModule
 
 from opal.data import OsuDataModule
 
