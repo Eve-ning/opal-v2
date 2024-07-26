@@ -91,9 +91,11 @@ class OsuDataModule(LightningDataModule):
 
         # Fit the transform only on the training data to avoid data leakage
         df_train["accuracy"] = self.qt_acc.fit_transform(
-            df_train[["accuracy"]]
+            df_train[["accuracy"]].values
         )
-        df_test["accuracy"] = self.qt_acc.transform(df_test[["accuracy"]])
+        df_test["accuracy"] = self.qt_acc.transform(
+            df_test[["accuracy"]].values
+        )
 
         self.ds_train = TensorDataset(
             tensor(df_train["uid"].to_numpy()),
