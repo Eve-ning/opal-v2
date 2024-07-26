@@ -106,11 +106,15 @@ class OsuDataModule(LightningDataModule):
         self.ds_train = TensorDataset(
             tensor(df_train["uid"].to_numpy()),
             tensor(df_train["mid"].to_numpy()),
+            tensor(df_train["uid_w"].to_numpy()).to(float),
+            tensor(df_train["mid_w"].to_numpy()).to(float),
             tensor(df_train["accuracy"].to_numpy()).to(float),
         )
         self.ds_test = TensorDataset(
             tensor(df_test["uid"].to_numpy()),
             tensor(df_test["mid"].to_numpy()),
+            tensor(df_test["uid_w"].to_numpy()).to(float),
+            tensor(df_test["mid_w"].to_numpy()).to(float),
             tensor(df_test["accuracy"].to_numpy()).to(float),
         )
 
