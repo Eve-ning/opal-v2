@@ -1,94 +1,33 @@
 from __future__ import annotations
 
-from functools import cache
-from pathlib import Path
-from typing import Literal, Sequence
-
+import networkx as nx
 import pandas as pd
-import pytorch_lightning as pl
+from lightning import LightningDataModule
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import tensor
 from torch.utils.data import TensorDataset, DataLoader
 
-from opal.utils import db_conn
-
-conn = db_conn()
+from opal.utils import RSC_DIR
 
 
-@cache
-def df_k(
-    keys: Sequence[int] | int | None = (7,),
-    sample: Literal["full", "1%", "10%", "1%_cached"] = "full",
-) -> pd.DataFrame:
-    if sample == "full":
-        dataset = "osu_dataset"
-    elif sample == "1%":
-        dataset = "osu_dataset_sample_1"
-    elif sample == "10%":
-        dataset = "osu_dataset_sample_10"
-    elif sample == "1%_cached":
-        pass
-    else:
-        raise ValueError(f"Invalid sample: {sample}")
-
-    # Make `keys` compatible with SQL
-    keys = (keys,) if isinstance(keys, int) else keys
-
-    if sample == "1%_cached":
-        cache_1_path = Path(__file__).parent / "osu_dataset_sample_1.csv"
-        assert cache_1_path.exists(), "Cache 1% does not exist"
-        df = pd.read_csv(cache_1_path)
-        df = df.loc[df["keys"].isin(keys)] if keys else df
-    else:
-        if keys:
-            # SQL breaks for (x,), fix with (x)
-            keys = f"({keys[0]})" if len(keys) == 1 else tuple(keys)
-            df = pd.read_sql(
-                rf"SELECT * FROM {dataset} WHERE `keys` IN {keys}", conn
-            )
-        else:
-            df = pd.read_sql(f"SELECT * FROM {dataset}", conn)
-
-    return df.astype({"keys": int})
-
-
-def df_remove_low_support(
-    df: pd.DataFrame,
-    n_min_map_support: int = 10,
-    n_min_user_support: int = 10,
-) -> pd.DataFrame:
-    return df.loc[
-        (df["n_mid"] > n_min_map_support) & (df["n_uid"] > n_min_user_support)
-    ]
-
-
-class OsuDataModule(pl.LightningDataModule):
+class OsuDataModule(LightningDataModule):
     def __init__(
         self,
-        df: pd.DataFrame,
+        n_keys: int,
         batch_size: int = 256,
         p_test: float | None = 0.2,
-        # q_remove_low_quantile_support: float = 0.1,
         n_min_user_support: int = 10,
         n_min_map_support: int = 10,
         n_acc_quantiles: int = 1000,
     ):
         """DataModule for the osu! dataset
 
-        Notes:
-            The dataset is preprocessed to remove low support maps and users.
-            The accuracy is transformed to a uniform distribution using a
-            quantile transformer.
-
         Args:
-            df: osu! dataset. See opal.data
+            n_keys: The number of keys of the dataset to use.
             batch_size: Batch size
             p_test: The proportion of the data to use as test data.
                 If None or 0, the entire dataset is used for training.
-            # q_remove_low_quantile_support: The proportion of the data to remove
-            #     based on the probability of the map and user.
-            #     This is done to remove low support maps and users.
             n_min_user_support: The minimum number of plays a user must have
                 to be included in the dataset.
             n_min_map_support: The minimum number of plays a map must have
@@ -97,72 +36,64 @@ class OsuDataModule(pl.LightningDataModule):
                 quantile transformer for the accuracy.
         """
         super().__init__()
+        self.n_keys = n_keys
         self.batch_size = batch_size
         self.n_acc_quantiles = n_acc_quantiles
 
+        self.n_min_map_support = n_min_map_support
+        self.n_min_user_support = n_min_user_support
+        self.p_test = p_test
         self.le_uid = LabelEncoder()
         self.le_mid = LabelEncoder()
         self.qt_acc = QuantileTransformer(
             n_quantiles=self.n_acc_quantiles,
             output_distribution="normal",
         )
+        self.df = None
 
-        # Note: This implicitly overwrites the uid, and mid in favour of
-        # the encoded uid and mid
-        df = df.assign(
-            uid=lambda x: x["username"]
-            + "/"
-            + x["year"].astype(str)
-            + "/"
-            + x["keys"].astype(str),
-            mid=lambda x: x["mapname"]
-            + "/"
-            + x["speed"].astype(str)
-            + "/"
-            + x["keys"].astype(str),
-        )
+    def prepare_data(self) -> None:
+        df = pd.read_csv(RSC_DIR / "score_dataset.csv")
+        self.df = df[df["keys"] == self.n_keys]
 
-        # Remove low support maps and users
-        #   We do this regardless of train/validation as we're simply not
-        #   interested in low support maps and users
-        #   This can artificially inflate the accuracy of the model, however,
-        #   during deployment, we're not supporting these predictions anyway.
-
-        # We firstly calculate the quantile support for each map and user
-        # Support is the number of entries for a map or user. So a popular
-        # map or an active user will have a high support.
-        # The quantile support is just the quantile of the support.
-        df = df.merge(
-            df["mid"].value_counts().rename("n_mid"),
-            on="mid",
-        ).merge(
-            df["uid"].value_counts().rename("n_uid"),
-            on="uid",
-        )
-        df = df_remove_low_support(
-            df,
-            n_min_map_support=n_min_map_support,
-            n_min_user_support=n_min_user_support,
-        )
-
-        # We fit the transform on the whole dataset, doesn't cause data leakage
-        df = df.assign(
+    def setup(self, stage: str) -> None:
+        self.df = self.df.assign(
+            uid=lambda x: x["uid"].astype(str) + "/" + x["year"].astype(str),
+            mid=lambda x: x["mid"].astype(str) + "/" + x["speed"].astype(str),
+        )[["uid", "mid", "accuracy"]].assign(
             uid=lambda x: self.le_uid.fit_transform(x["uid"]),
             mid=lambda x: self.le_mid.fit_transform(x["mid"]),
         )
-        df_train, df_test = (
-            train_test_split(df, test_size=p_test, random_state=42)
-            if p_test
-            else (df, df)
+
+        # Evaluate weight from PageRank
+        # We construct our IDs as tuples because NetworkX treats all of them
+        # under the same class, nodes. This makes it difficult to retrieve the
+        # PageRank later. So we "tag" them with their respective classes.
+        g = nx.from_edgelist(
+            [
+                (("uid", u), ("mid", m))
+                for u, m in self.df[["uid", "mid"]].values
+            ]
+        )
+        pr = nx.pagerank(g)
+
+        # A neat trick, if we do (X, Y), it'll make a MultiIndex, which we can
+        # retrieve with df.loc["X"]
+        df_pr = pd.DataFrame({"w": pr.values()}, index=pr.keys())
+        self.df = self.df.join(
+            df_pr.loc["uid"].rename({"w": "uid_w"}, axis=1),
+        ).join(
+            df_pr.loc["mid"].rename({"w": "mid_w"}, axis=1),
+        )
+
+        df_train, df_test = train_test_split(
+            self.df, test_size=self.p_test, random_state=42
         )
 
         # Fit the transform only on the training data to avoid data leakage
         df_train["accuracy"] = self.qt_acc.fit_transform(
-            df_train["accuracy"].to_numpy().reshape(-1, 1)
+            df_train[["accuracy"]]
         )
-        df_test["accuracy"] = self.qt_acc.transform(
-            df_test["accuracy"].to_numpy().reshape(-1, 1)
-        )
+        df_test["accuracy"] = self.qt_acc.transform(df_test[["accuracy"]])
 
         self.ds_train = TensorDataset(
             tensor(df_train["uid"].to_numpy()),
@@ -174,7 +105,6 @@ class OsuDataModule(pl.LightningDataModule):
             tensor(df_test["mid"].to_numpy()),
             tensor(df_test["accuracy"].to_numpy()).to(float),
         )
-        self.df = df
 
     @property
     def n_uid(self):
@@ -183,34 +113,6 @@ class OsuDataModule(pl.LightningDataModule):
     @property
     def n_mid(self):
         return len(self.le_mid.classes_)
-
-    @property
-    def n_uid_support(self) -> list[int]:
-        return (
-            (
-                self.df["username"]
-                + "/"
-                + self.df["year"].astype(str)
-                + "/"
-                + self.df["keys"].astype(str)
-            )
-            .value_counts()[self.le_uid.classes_]
-            .to_list()
-        )
-
-    @property
-    def n_mid_support(self) -> list[int]:
-        return (
-            (
-                self.df["mapname"]
-                + "/"
-                + self.df["speed"].astype(str)
-                + "/"
-                + self.df["keys"].astype(str)
-            )
-            .value_counts()[self.le_mid.classes_]
-            .to_list()
-        )
 
     def train_dataloader(self):
         return DataLoader(
