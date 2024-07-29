@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeAlias
 
 import lightning as pl
 import numpy as np
@@ -13,7 +13,7 @@ from torch.nn.functional import softplus
 from opal.dict_transformer import DictionaryTransformer
 from opal.model.positive_linear import PositiveLinear
 
-type Batch = tuple[Tensor, Tensor, Tensor]
+Batch: TypeAlias = tuple[Tensor, Tensor, Tensor]
 
 
 class DeltaModel(pl.LightningModule):
