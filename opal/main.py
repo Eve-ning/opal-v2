@@ -23,7 +23,6 @@ class Experiment:
     sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full"
     batch_size: int = 2**10
     p_test: float = 0
-    n_min_support: int = 10
     n_acc_quantiles: int = 10000
     n_emb: int = 1
     n_epochs: int = 25
@@ -36,8 +35,6 @@ class Experiment:
         return OsuDataModule(
             n_keys=self.n_keys,
             batch_size=self.batch_size,
-            n_min_map_support=self.n_min_support,
-            n_min_user_support=self.n_min_support,
             n_acc_quantiles=self.n_acc_quantiles,
             p_test=self.p_test,
         )
@@ -83,21 +80,19 @@ class Experiment:
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
-    n_epochs = 1
+    n_epochs = 10
     batch_size = 2**10
-    n_min_support = 50
     p_test = 0.10
     n_emb = 2
     l1_loss_weight = 1e-7
     l2_loss_weight = 1e-14
-    lr = 1e-3
+    lr = 3e-3
 
     exp_fn = lambda k: Experiment(
         n_epochs=n_epochs,
         lr=lr,
         batch_size=batch_size,
         n_keys=k,
-        n_min_support=n_min_support,
         p_test=p_test,
         n_emb=n_emb,
         l1_loss_weight=l1_loss_weight,
