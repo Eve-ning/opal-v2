@@ -4,25 +4,21 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Literal, Sequence
 
-import numpy as np
-import pandas as pd
-import pytorch_lightning as pl
+import lightning as pl
 import torch
-import wandb
-from pytorch_lightning.callbacks import (
+from lightning.pytorch.callbacks import (
     ModelCheckpoint,
-    LearningRateMonitor,
     EarlyStopping,
+    LearningRateMonitor,
 )
-from pytorch_lightning.loggers import WandbLogger
 
-from opal.data import OsuDataModule, df_k
+from opal.data import OsuDataModule
 from opal.model.delta_model import DeltaModel
 
 
 @dataclass
 class Experiment:
-    n_keys: Sequence[int] | int | None = (7,)
+    n_keys: int = 4
     lr: float = 1e-3
     sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full"
     batch_size: int = 2**10
@@ -36,13 +32,9 @@ class Experiment:
     l2_loss_weight: float = 0
 
     @cached_property
-    def df(self):
-        return df_k(self.n_keys, sample=self.sample_set)
-
-    @cached_property
     def datamodule(self):
         return OsuDataModule(
-            df=self.df,
+            n_keys=self.n_keys,
             batch_size=self.batch_size,
             n_min_map_support=self.n_min_support,
             n_min_user_support=self.n_min_support,
@@ -59,9 +51,9 @@ class Experiment:
             lr=self.lr,
             le_uid=self.datamodule.le_uid,
             le_mid=self.datamodule.le_mid,
+            dt_uid_w=self.datamodule.dt_uid_w,
+            dt_mid_w=self.datamodule.dt_mid_w,
             qt_acc=self.datamodule.qt_acc,
-            n_uid_support=self.datamodule.n_uid_support,
-            n_mid_support=self.datamodule.n_mid_support,
             n_emb_mean=self.n_emb,
             l1_loss_weight=self.l1_loss_weight,
             l2_loss_weight=self.l2_loss_weight,
@@ -80,57 +72,18 @@ class Experiment:
                 ),
                 LearningRateMonitor(),
             ],
-            logger=WandbLogger(
-                entity="evening",
-                project="opal",
-                # Gets only the dataclass fields
-                # Note: __dict__ will include properties
-                config={
-                    k: exp.__getattribute__(k)
-                    for k in exp.__dataclass_fields__.keys()
-                },
-                tags=["dev"],
-            ),
         )
 
     def fit(self):
-        self.trainer.fit(self.model, datamodule=self.datamodule)
-
-    def wandb_log_weights(self):
-        df_uid_emb, df_mid_emb = self.model.get_embeddings()
-
-        wandb.log(
-            {
-                "model/uid_emb": wandb.Table(
-                    dataframe=df_uid_emb.reset_index().assign(
-                        meta=lambda x: (
-                            x["username"]
-                            + "/"
-                            + x["year"].astype(str)
-                            + "/"
-                            + x["keys"].astype(str)
-                        )
-                    )
-                ),
-                "model/mid_emb": wandb.Table(
-                    dataframe=df_mid_emb.reset_index().assign(
-                        meta=lambda x: (
-                            x["mapname"]
-                            + "/"
-                            + x["speed"].astype(str)
-                            + "/"
-                            + x["keys"].astype(str)
-                        )
-                    )
-                ),
-            }
-        )
+        dm = self.datamodule
+        dm.prepare_data()
+        dm.setup("")
+        self.trainer.fit(self.model, datamodule=dm)
 
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
-    n_epochs = 25
-    sample_set = "full"
+    n_epochs = 1
     batch_size = 2**10
     n_min_support = 50
     p_test = 0.10
@@ -141,7 +94,6 @@ if __name__ == "__main__":
 
     exp_fn = lambda k: Experiment(
         n_epochs=n_epochs,
-        sample_set=sample_set,
         lr=lr,
         batch_size=batch_size,
         n_keys=k,
@@ -154,14 +106,5 @@ if __name__ == "__main__":
 
     exp = exp_fn(7)
     exp.fit()
-    exp.wandb_log_weights()
-    wandb.finish()
-
-    del exp
-
-    exp = exp_fn(4)
-    exp.fit()
-    exp.wandb_log_weights()
-    wandb.finish()
 
     del exp

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import lightning as pl
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import torch
 from sklearn.preprocessing import LabelEncoder, QuantileTransformer
 from torch import nn, Tensor, tensor
-from torch.nn.functional import softplus, hardsigmoid
+from torch.nn.functional import softplus
 
+from opal.dict_transformer import DictionaryTransformer
 from opal.model.positive_linear import PositiveLinear
+
+type Batch = tuple[Tensor, Tensor, Tensor]
 
 
 class DeltaModel(pl.LightningModule):
@@ -19,9 +22,9 @@ class DeltaModel(pl.LightningModule):
         one_cycle_total_steps: int,
         le_uid: LabelEncoder,
         le_mid: LabelEncoder,
+        dt_uid_w: DictionaryTransformer,
+        dt_mid_w: DictionaryTransformer,
         qt_acc: QuantileTransformer,
-        n_uid_support: list,
-        n_mid_support: list,
         n_emb_mean: int = 2,
         n_emb_var: int = 1,
         n_delta_mean_neurons: int = 4,
@@ -36,13 +39,7 @@ class DeltaModel(pl.LightningModule):
             le_uid: Label Encoder for User IDs
             le_mid: Label Encoder for Beatmap IDs
             qt_acc: Quantile Transformer for Accuracy
-            n_uid_support: Number of Beatmaps each User has played
-            n_mid_support: Number of Users each Beatmap has scores on
             n_emb_mean: Number of Embedding Dimensions
-            n_delta_mean_neurons: Number of Neurons for the Delta Mean
-                Estimation
-            n_delta_var_neurons: Number of Neurons for the  Delta Variance
-                Estimation
             lr: Learning Rate
             l1_loss_weight: L1 Loss Weight
             l2_loss_weight: L2 Loss Weight
@@ -52,15 +49,9 @@ class DeltaModel(pl.LightningModule):
         self.total_steps = one_cycle_total_steps
         self.le_uid = le_uid
         self.le_mid = le_mid
+        self.dt_uid_w = dt_uid_w
+        self.dt_mid_w = dt_mid_w
         self.qt_acc = qt_acc
-        self.n_uid_support = nn.Parameter(
-            tensor(n_uid_support, dtype=torch.int),
-            requires_grad=False,
-        )
-        self.n_mid_support = nn.Parameter(
-            tensor(n_mid_support, dtype=torch.int),
-            requires_grad=False,
-        )
         self.lr = lr
         self.l1_loss_weight = l1_loss_weight
         self.l2_loss_weight = l2_loss_weight
@@ -70,9 +61,8 @@ class DeltaModel(pl.LightningModule):
 
         # Embeddings for User and Beatmap IDs
         self.emb_uid_mean = nn.Embedding(n_uid, n_emb_mean)
-        self.emb_mid_mean = nn.Embedding(n_mid, n_emb_mean)
+        self.emb_mid = nn.Embedding(n_mid, n_emb_mean)
         self.emb_uid_var = nn.Embedding(n_uid, n_emb_var)
-        self.emb_mid_var = nn.Embedding(n_mid, n_emb_var)
 
         # Batch Normalization for Embedding Differences
         self.bn_mean = nn.BatchNorm1d(n_emb_mean, affine=False)
@@ -99,52 +89,29 @@ class DeltaModel(pl.LightningModule):
     def forward(self, x_uid, x_mid):
         # Convert the One-Hot Encoded User ID and Beatmap ID to Embeddings
         x_uid_mean = self.emb_uid_mean(x_uid)
-        x_mid_mean = self.emb_mid_mean(x_mid)
-
         x_uid_var = self.emb_uid_var(x_uid)
-        x_mid_var = self.emb_mid_var(x_mid)
+
+        x_mid = self.emb_mid(x_mid)
 
         # Calculate the difference between the User and Beatmap ID Embeddings
-        x_delta = x_uid_mean - x_mid_mean
-
-        # Get the sum of the User and Beatmap ID Embeddings for variance
-        x_sum = x_uid_var + x_mid_var
+        x_delta = x_uid_mean - x_mid
 
         # Normalize the Embedding Differences
         x_delta = self.bn_mean(x_delta)
-        x_sum = self.bn_var(x_sum)
+        x_uid_var = self.bn_var(x_uid_var)
 
         # Convert the Embedding Differences to Accuracy Mean and Variance
         y_mean = self.delta_to_acc_mean(x_delta).squeeze()
-        y_var = softplus(self.delta_to_acc_var(x_sum)).squeeze()
+        y_var = softplus(self.delta_to_acc_var(x_uid_var)).squeeze()
 
         return y_mean, y_var
-
-    @staticmethod
-    def loss_nll(
-        mean: Tensor,
-        var: Tensor,
-        target: Tensor,
-        eps: float = 1e-10,
-    ):
-        """Negative Log Likelihood Loss for Gaussian Distribution
-
-        Args:
-            mean: Mean of the Gaussian Distribution
-            var: Variance of the Gaussian Distribution
-            target: Target Value
-            eps: Epsilon to prevent NaNs. Defaults to 1e-10.
-        """
-        return (
-            (torch.log(var + eps) / 2)
-            + ((target - mean) ** 2 / (2 * var + eps))
-        ).mean()
 
     @staticmethod
     def loss_nll_laplace(
         mean: Tensor,
         var: Tensor,
         target: Tensor,
+        weight: Tensor,
         eps: float = 1e-10,
     ):
         """Negative Log Likelihood Loss for Laplace Distribution
@@ -156,9 +123,14 @@ class DeltaModel(pl.LightningModule):
             eps: Epsilon to prevent NaNs. Defaults to 1e-10.
         """
         scale = torch.sqrt(var + eps) / 2
-        return (torch.log(2 * scale) + torch.abs(target - mean) / scale).mean()
+        loss = (
+            torch.log(2 * scale) + torch.abs(target - mean) / scale
+        ) * weight
+        return loss.mean()
 
-    def decoded_rmse(self, mean: Tensor, var: Tensor, target: Tensor):  # noqa
+    def loss_decoded_rmse(
+        self, mean: Tensor, var: Tensor, target: Tensor, weight: Tensor
+    ):
         return (
             nn.MSELoss()(
                 tensor(self.decode_acc(mean.cpu().reshape(-1, 1))),
@@ -167,43 +139,41 @@ class DeltaModel(pl.LightningModule):
             ** 0.5
         )
 
-    def step(self, batch: tuple[Tensor, Tensor, Tensor], loss_fn: Any):
+    def step(self, batch: Batch, loss_fn: Any):
         x_uid, x_mid, y = batch
         y_pred_mean, y_pred_var = self(x_uid, x_mid)
-        return loss_fn(y_pred_mean, y_pred_var, y)
+        x_uid_w = tensor(self.dt_uid_w.transform(x_uid.tolist()))
+        x_mid_w = tensor(self.dt_mid_w.transform(x_mid.tolist()))
+        return loss_fn(y_pred_mean, y_pred_var, y, x_uid_w * x_mid_w)
 
-    def training_step(
-        self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int
-    ):
+    def training_step(self, batch: Batch, batch_idx: int):
         self.log(
             "train/nll_loss",
             (loss := self.step(batch, self.loss_nll_laplace)),
             prog_bar=True,
         )
-        # Add l1 regularization to the embeddings
-        l1 = (
-            torch.exp(self.emb_uid_mean.weight).sum()
-            + torch.exp(self.emb_mid_mean.weight).sum()
-        )
-        self.log("train/l1_loss", l1, prog_bar=True)
-        l2 = l1**2
-        self.log("train/l2_loss", l2)
-        return loss + self.l1_loss_weight * l1 + self.l2_loss_weight * l2
+        # # Add l1 regularization to the embeddings
+        # l1 = (
+        #     torch.exp(self.emb_uid_mean.weight).sum()
+        #     + torch.exp(self.emb_mid_mean.weight).sum()
+        # )
+        # self.log("train/l1_loss", l1, prog_bar=True)
+        # l2 = l1**2
+        # self.log("train/l2_loss", l2)
+        return loss
 
-    def validation_step(
-        self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int
-    ):
+    def validation_step(self, batch: Batch, batch_idx: int):
         self.log(
             "val/rmse_loss",
-            (loss := self.step(batch, self.decoded_rmse)),
+            (loss := self.step(batch, self.loss_decoded_rmse)),
             prog_bar=True,
         )
         return loss
 
-    def test_step(self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int):
+    def test_step(self, batch: Batch, batch_idx: int):
         self.log(
             "test/rmse_loss",
-            (loss := self.step(batch, self.decoded_rmse)),
+            (loss := self.step(batch, self.loss_decoded_rmse)),
             prog_bar=True,
         )
         return loss
@@ -246,15 +216,13 @@ class DeltaModel(pl.LightningModule):
             associated with.
         """
         uid_mean = self.emb_uid_mean.weight.detach().numpy()
-        mid_mean = self.emb_mid_mean.weight.detach().numpy()
+        mid_mean = self.emb_mid.weight.detach().numpy()
         uid_var = self.emb_uid_var.weight.detach().numpy()
-        mid_var = self.emb_mid_var.weight.detach().numpy()
 
         df_emb_uid = pd.DataFrame(
             {
                 **{f"d{k}": emb for k, emb in enumerate(uid_mean.T)},
                 **{f"dv{k}": emb for k, emb in enumerate(uid_var.T)},
-                **{"support": self.n_uid_support},
             },
             index=self.multi_index_uid(),
         )
@@ -262,8 +230,6 @@ class DeltaModel(pl.LightningModule):
         df_emb_mid = pd.DataFrame(
             {
                 **{f"d{k}": emb for k, emb in enumerate(mid_mean.T)},
-                **{f"dv{k}": emb for k, emb in enumerate(mid_var.T)},
-                **{"support": self.n_mid_support},
             },
             index=self.multi_index_mid(),
         )
@@ -358,20 +324,16 @@ class DeltaModel(pl.LightningModule):
         return pd.MultiIndex.from_frame(
             pd.Series(self.uid_classes)
             .str.split("/", expand=True)
-            .rename(columns={0: "username", 1: "year", 2: "keys"})
-            .astype({"year": int, "keys": float})
-            # We cast to float, then int to handle strings with decimals
-            .astype({"keys": int})
+            .rename(columns={0: "username", 1: "year"})
+            .astype({"year": int})
         )
 
     def multi_index_mid(self):
         return pd.MultiIndex.from_frame(
             pd.Series(self.mid_classes)
             .str.split("/", expand=True)
-            .rename(columns={0: "mapname", 1: "speed", 2: "keys"})
-            .astype({"speed": int, "keys": float})
-            # We cast to float, then int to handle strings with decimals
-            .astype({"keys": int})
+            .rename(columns={0: "mapname", 1: "speed"})
+            .astype({"speed": int})
         )
 
     def decode_acc(self, x):

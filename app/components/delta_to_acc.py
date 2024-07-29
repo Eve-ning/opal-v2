@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import plotly.graph_objects as go
 import streamlit as st
 import torch
-from torch.nn.functional import softplus
 
 if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel

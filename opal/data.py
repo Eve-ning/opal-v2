@@ -12,6 +12,7 @@ from sklearn.preprocessing import (
 from torch import tensor
 from torch.utils.data import TensorDataset, DataLoader
 
+from opal.dict_transformer import DictionaryTransformer
 from opal.utils import RSC_DIR
 
 
@@ -49,6 +50,8 @@ class OsuDataModule(LightningDataModule):
         self.p_test = p_test
         self.le_uid = LabelEncoder()
         self.le_mid = LabelEncoder()
+        self.dt_uid_w = DictionaryTransformer()
+        self.dt_mid_w = DictionaryTransformer()
         self.qt_acc = QuantileTransformer(
             n_quantiles=self.n_acc_quantiles,
             output_distribution="normal",
@@ -83,13 +86,14 @@ class OsuDataModule(LightningDataModule):
         # A neat trick, if we do (X, Y), it'll make a MultiIndex, which we can
         # retrieve with df.loc["X"]
         df_pr = pd.DataFrame({"w": pr.values()}, index=pr.keys())
-        df_pr_uid = df_pr.loc["uid"].rename({"w": "uid_w"}, axis=1)
-        df_pr_uid[:] = minmax_scale(df_pr_uid)
-        df_pr_mid = df_pr.loc["mid"].rename({"w": "mid_w"}, axis=1)
-        df_pr_mid[:] = minmax_scale(df_pr_mid)
 
-        self.df = pd.merge(self.df, df_pr_uid, left_on="uid", right_index=True)
-        self.df = pd.merge(self.df, df_pr_mid, left_on="mid", right_index=True)
+        df_pr_uid = df_pr.loc["uid"]
+        df_pr_uid[:] = minmax_scale(df_pr_uid)
+        self.dt_uid_w.fit(df_pr_uid["w"])
+
+        df_pr_mid = df_pr.loc["mid"]
+        df_pr_mid[:] = minmax_scale(df_pr_mid)
+        self.dt_mid_w.fit(df_pr_mid["w"])
 
         df_train, df_test = train_test_split(
             self.df, test_size=self.p_test, random_state=42
@@ -106,15 +110,11 @@ class OsuDataModule(LightningDataModule):
         self.ds_train = TensorDataset(
             tensor(df_train["uid"].to_numpy()),
             tensor(df_train["mid"].to_numpy()),
-            tensor(df_train["uid_w"].to_numpy()).to(float),
-            tensor(df_train["mid_w"].to_numpy()).to(float),
             tensor(df_train["accuracy"].to_numpy()).to(float),
         )
         self.ds_test = TensorDataset(
             tensor(df_test["uid"].to_numpy()),
             tensor(df_test["mid"].to_numpy()),
-            tensor(df_test["uid_w"].to_numpy()).to(float),
-            tensor(df_test["mid_w"].to_numpy()).to(float),
             tensor(df_test["accuracy"].to_numpy()).to(float),
         )
 
