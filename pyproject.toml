@@ -21,6 +21,8 @@ networkx = "^3.3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.10.0"
+streamlit = "^1.37.0"
+plotly = "^5.23.0"
 
 
 [[tool.poetry.source]]
