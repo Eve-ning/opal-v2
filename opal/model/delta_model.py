@@ -205,37 +205,6 @@ class DeltaModel(pl.LightningModule):
     def mid_classes(self) -> np.ndarray:
         return np.array(self.le_mid.classes_)
 
-    def get_embeddings(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Returns the Embeddings for Users and Beatmaps
-
-        Returns:
-            tuple[pd.DataFrame, pd.DataFrame]: User and Beatmap Embeddings
-            The DataFrames contain the Embeddings and the Support for each
-            User and Beatmap.
-            The Support is the number of scores each User and Beatmap is
-            associated with.
-        """
-        uid_mean = self.emb_uid_mean.weight.detach().numpy()
-        mid_mean = self.emb_mid.weight.detach().numpy()
-        uid_var = self.emb_uid_var.weight.detach().numpy()
-
-        df_emb_uid = pd.DataFrame(
-            {
-                **{f"d{k}": emb for k, emb in enumerate(uid_mean.T)},
-                **{f"dv{k}": emb for k, emb in enumerate(uid_var.T)},
-            },
-            index=self.multi_index_uid(),
-        )
-
-        df_emb_mid = pd.DataFrame(
-            {
-                **{f"d{k}": emb for k, emb in enumerate(mid_mean.T)},
-            },
-            index=self.multi_index_mid(),
-        )
-
-        return df_emb_uid, df_emb_mid
-
     def predict_user(self, username: str | list[str]) -> pd.DataFrame:
         """Predicts the accuracy for all beatmaps for a given user
 
@@ -277,22 +246,25 @@ class DeltaModel(pl.LightningModule):
         )
         return df_mean
 
-    def predict_map(self, mapname: str | list[str]) -> pd.DataFrame:
+    def predict_map(self, mid: str | list[str]) -> pd.DataFrame:
         """Predicts the accuracy for all users for a given beatmap
 
         Args:
-            mapname: Map Name
+            mid: Map Name
             speed: Map Speed
 
         Returns:
-            DataFrame: Mean, Lower Bound, and Upper Bound.
+            A list of dict:
+                [
+                    {"map
+                ]
             The lower and upper bounds are one standard deviation away from
              the mean.
 
         """
 
-        mapname = [mapname] if isinstance(mapname, str) else mapname
-        mid = self.encode_mid(mapname)
+        mid = [mid] if isinstance(mid, str) else mid
+        mid = self.encode_mid(mid)
         n_uid = len(self.uid_classes)
         x_uid = tensor(range(n_uid))
         x_mid = tensor(mid).repeat(n_uid)
@@ -324,16 +296,16 @@ class DeltaModel(pl.LightningModule):
         return pd.MultiIndex.from_frame(
             pd.Series(self.uid_classes)
             .str.split("/", expand=True)
-            .rename(columns={0: "username", 1: "year"})
-            .astype({"year": int})
+            .rename(columns={0: "uid", 1: "year"})
+            .astype(int)
         )
 
     def multi_index_mid(self):
         return pd.MultiIndex.from_frame(
             pd.Series(self.mid_classes)
             .str.split("/", expand=True)
-            .rename(columns={0: "mapname", 1: "speed"})
-            .astype({"speed": int})
+            .rename(columns={0: "mid", 1: "speed"})
+            .astype(int)
         )
 
     def decode_acc(self, x):
