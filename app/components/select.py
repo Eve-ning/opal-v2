@@ -9,35 +9,26 @@ sys.path.append(PROJECT_DIR.as_posix())
 from opal.model.delta_model import DeltaModel
 
 
-def st_select_user(
-    name_opts: pd.DataFrame,
-    year_opts: pd.DataFrame,
-):
-    username = st.selectbox("User", name_opts.unique())
-
-    years = year_opts[name_opts == username].unique()
-
+def st_select_user(username_opts: pd.Series, year_opts: pd.Series):
+    username = st.selectbox("User", username_opts.unique())
+    years = year_opts[username_opts == username].unique()
     if len(years) == 1:
-        useryear = years[0]
-        st.metric("Year", useryear)
+        st.metric("Year", (year := years[0]))
     else:
-        useryear = st.select_slider(
-            "Year",
-            year_opts[name_opts == username].unique(),
-        )
-    return username, useryear
+        year = st.select_slider("Year", years)
+    return username, int(year)
 
 
-def st_select_map(name_opts: pd.Series, speed_opts: pd.Series):
-    mapname = st.selectbox("Map", name_opts.unique())
-    speed_options = speed_opts[name_opts == mapname].unique()
-    mapspeed = st.radio(
+def st_select_map(mapname_opts: pd.Series, speed_opts: pd.Series):
+    mapname = st.selectbox("Map", mapname_opts.unique())
+    speed_options = speed_opts[mapname_opts == mapname].unique()
+    speed = st.radio(
         "Speed",
         speed_options,
-        format_func={-1: "HT", 0: "NM", 1: "DT"}.get,
+        format_func={-1: "HT", 0: "NT", 1: "DT"}.get,
         horizontal=True,
     )
-    return mapname, mapspeed
+    return mapname, int(speed)
 
 
 @st.cache_resource()
