@@ -13,9 +13,9 @@ scikit-learn = "^1.5.1"
 matplotlib = "^3.9.1"
 sqlalchemy = "^2.0.31"
 
-torch = { version = "^2.3.1+cu121", source = "pytorch-gpu" }
-torchvision = { version = "^0.18.1+cu121", source = "pytorch-gpu" }
-torchaudio = { version = "^2.3.1+cu121", source = "pytorch-gpu" }
+torch = "^2.3.1"
+torchvision = "^0.18.1"
+torchaudio = "^2.3.1"
 lightning = "^2.3.3"
 networkx = "^3.3"
 
@@ -23,12 +23,6 @@ networkx = "^3.3"
 black = "^23.10.0"
 streamlit = "^1.37.0"
 plotly = "^5.23.0"
-
-
-[[tool.poetry.source]]
-name = "pytorch-gpu"
-url = "https://download.pytorch.org/whl/cu121"
-priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
