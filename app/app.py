@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 
@@ -41,7 +42,7 @@ with st.sidebar:
     m, model_name = st_select_model(PROJECT_DIR / "app")
     m: DeltaModel
     # Extract all numerical values from the model_id as keys
-    KEYS = 7
+    KEYS = int(re.findall(r"\d+", model_name)[0])
     st.caption(f"Model ID: {model_name}, Keys: {KEYS}")
 
     df_uid = pd.DataFrame(

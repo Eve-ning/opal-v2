@@ -4,7 +4,13 @@ import streamlit as st
 
 def st_leaderboard(map_pred, user_pred, mean, lower_bound, upper_bound):
     with st.expander("Map Leaderboard"):
-        st.markdown("This graph shows the accuracy distribution across")
+        st.markdown(
+            "The red line shows how the player would perform, "
+            "compared to other players on this map. "
+            "The yellow rectangle shows the 75% confidence interval lower and "
+            "upper bound. This means that if the player plays the map 100 "
+            "times, 75 of them are likely to fall within this range."
+        )
         st.plotly_chart(
             go.Figure(
                 [
@@ -16,7 +22,6 @@ def st_leaderboard(map_pred, user_pred, mean, lower_bound, upper_bound):
                 ]
             )
             .update_layout(
-                title="Map Accuracy Distribution",
                 xaxis_title="Accuracy",
                 yaxis_title="Frequency",
                 xaxis=dict(range=[0.85, 1], tickformat=".0%"),
@@ -32,6 +37,13 @@ def st_leaderboard(map_pred, user_pred, mean, lower_bound, upper_bound):
             )
         )
     with st.expander("Player Leaderboard"):
+        st.markdown(
+            "The red line shows how the player would perform, "
+            "compared to their own plays on other maps. "
+            "The yellow rectangle shows the 75% confidence interval lower and "
+            "upper bound. This means that if the player plays the map 100 "
+            "times, 75 of them are likely to fall within this range."
+        )
         st.plotly_chart(
             go.Figure(
                 [
@@ -43,7 +55,6 @@ def st_leaderboard(map_pred, user_pred, mean, lower_bound, upper_bound):
                 ]
             )
             .update_layout(
-                title="Player Accuracy Distribution",
                 xaxis_title="Accuracy",
                 yaxis_title="Frequency",
                 xaxis=dict(range=[0.85, 1], tickformat=".0%"),

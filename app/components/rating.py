@@ -24,6 +24,10 @@ DAN_MAPPING = {
 
 def st_map_rating(df, md, maplabel, enable_dans: bool = False):
     with st.expander("Map Rating"):
+        st.markdown(
+            "The red line shows the difficulty of the map, "
+            "compared to all other maps"
+        )
         dans_only = st.checkbox(
             "Dans Only (Only for 7K)",
             value=False,
@@ -92,6 +96,10 @@ def st_map_rating(df, md, maplabel, enable_dans: bool = False):
 
 def st_player_rating(df, ud, userlabel):
     with st.expander("Player Rating"):
+        st.markdown(
+            "The red line shows the rating of the player, "
+            "compared to all other players"
+        )
         st.plotly_chart(
             go.Figure(
                 px.histogram(

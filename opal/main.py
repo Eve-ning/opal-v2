@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Literal, Sequence
+from typing import Literal
 
 import lightning as pl
 import torch
