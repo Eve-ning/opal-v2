@@ -22,8 +22,6 @@ class OsuDataModule(LightningDataModule):
         n_keys: int,
         batch_size: int = 256,
         p_test: float | None = 0.2,
-        n_min_user_support: int = 10,
-        n_min_map_support: int = 10,
         n_acc_quantiles: int = 1000,
     ):
         """DataModule for the osu! dataset
@@ -45,8 +43,6 @@ class OsuDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.n_acc_quantiles = n_acc_quantiles
 
-        self.n_min_map_support = n_min_map_support
-        self.n_min_user_support = n_min_user_support
         self.p_test = p_test
         self.le_uid = LabelEncoder()
         self.le_mid = LabelEncoder()
