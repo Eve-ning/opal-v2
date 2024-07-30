@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Literal
 
 import lightning as pl
 import torch
@@ -20,7 +19,6 @@ from opal.model.delta_model import DeltaModel
 class Experiment:
     n_keys: int = 4
     lr: float = 1e-3
-    sample_set: Literal["full", "1%", "10%", "1%_cached"] = "full"
     batch_size: int = 2**10
     p_test: float = 0
     n_acc_quantiles: int = 10000
@@ -84,8 +82,6 @@ if __name__ == "__main__":
     batch_size = 2**10
     p_test = 0.10
     n_emb = 2
-    l1_loss_weight = 1e-7
-    l2_loss_weight = 1e-14
     lr = 3e-3
 
     exp_fn = lambda k: Experiment(
@@ -95,11 +91,9 @@ if __name__ == "__main__":
         n_keys=k,
         p_test=p_test,
         n_emb=n_emb,
-        l1_loss_weight=l1_loss_weight,
-        l2_loss_weight=l2_loss_weight,
     )
 
-    exp = exp_fn(7)
+    exp = exp_fn(4)
     exp.fit()
 
     del exp
