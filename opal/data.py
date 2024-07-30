@@ -31,10 +31,6 @@ class OsuDataModule(LightningDataModule):
             batch_size: Batch size
             p_test: The proportion of the data to use as test data.
                 If None or 0, the entire dataset is used for training.
-            n_min_user_support: The minimum number of plays a user must have
-                to be included in the dataset.
-            n_min_map_support: The minimum number of plays a map must have
-                to be included in the dataset.
             n_acc_quantiles: The number of quantiles to use for the
                 quantile transformer for the accuracy.
         """
@@ -59,6 +55,9 @@ class OsuDataModule(LightningDataModule):
         self.df = df[df["keys"] == self.n_keys]
 
     def setup(self, stage: str) -> None:
+        self.df["year"] = pd.to_datetime(
+            self.df["days_since_epoch"], unit="D"
+        ).dt.year
         self.df = self.df.assign(
             uid=lambda x: x["uid"].astype(str) + "/" + x["year"].astype(str),
             mid=lambda x: x["mid"].astype(str) + "/" + x["speed"].astype(str),
