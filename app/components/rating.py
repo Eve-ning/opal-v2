@@ -38,7 +38,7 @@ def st_map_rating(df, md, maplabel, enable_dans: bool = False):
             "We use this as a measure to sanity check the embeddings.",
         )
 
-        if dans_only:
+        if dans_only and enable_dans:
             df = df.query(
                 "(mapname.str.contains('Regular Dan Phase') | "
                 "mapname.str.contains('LN Dan Phase')) "
