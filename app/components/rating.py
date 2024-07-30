@@ -48,9 +48,7 @@ def st_map_rating(df, md, maplabel, enable_dans: bool = False):
             df["danname"] = df["mapname"].str.extract(r"\[(\w+)\b")
             df["dannum"] = df["danname"].replace(DAN_MAPPING)
             df["dantype"] = df["mapname"].str.extract(r"\-\s\b(\w+)\b")
-            df["speedtxt"] = df["speed"].apply(
-                {-1: "HT", 0: "NT", 1: "DT"}.get
-            )
+            df["speedtxt"] = df["speed"].apply({-1: "HT", 0: "", 1: "DT"}.get)
 
             fig = px.scatter(
                 data_frame=df.rename({"pagerank_qt": "Confidence"}, axis=1),

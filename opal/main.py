@@ -10,6 +10,7 @@ from lightning.pytorch.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
 )
+from scipy.interpolate import make_smoothing_spline
 
 from opal.data import OsuDataModule
 from opal.model.delta_model import DeltaModel
@@ -93,6 +94,10 @@ if __name__ == "__main__":
         n_emb=n_emb,
     )
 
+    exp = exp_fn(7)
+    exp.fit()
+
+    del exp
     exp = exp_fn(4)
     exp.fit()
 

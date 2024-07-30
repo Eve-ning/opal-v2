@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 import streamlit as st
@@ -25,7 +26,7 @@ def st_select_map(mapname_opts: pd.Series, speed_opts: pd.Series):
     speed = st.radio(
         "Speed",
         speed_options,
-        format_func={-1: "HT", 0: "NT", 1: "DT"}.get,
+        format_func={-1: "Half Time", 0: "Normal Time", 1: "Double Time"}.get,
         horizontal=True,
     )
     return mapname, int(speed)
