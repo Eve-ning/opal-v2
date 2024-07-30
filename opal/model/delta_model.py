@@ -84,8 +84,6 @@ class DeltaModel(pl.LightningModule):
             PositiveLinear(n_delta_var_neurons, 1),
         )
 
-        self.save_hyperparameters()
-
     def forward(self, x_uid, x_mid):
         # Convert the One-Hot Encoded User ID and Beatmap ID to Embeddings
         x_uid_mean = self.emb_uid_mean(x_uid)
