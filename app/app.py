@@ -27,11 +27,13 @@ st.set_page_config(
 )
 st.title("Opal: Delta Model")
 
+THIS_DIR = Path(__file__).parent
+
 
 @st.cache_data
 def read_map_metadata():
     return (
-        pd.read_csv(RSC_DIR / "map_metadata.csv")
+        pd.read_csv(THIS_DIR / "map_metadata.csv")
         .set_index("mid")["mapname"]
         .to_dict()
     )
@@ -40,7 +42,7 @@ def read_map_metadata():
 @st.cache_data
 def read_player_metadata():
     return (
-        pd.read_csv(RSC_DIR / "player_metadata.csv")
+        pd.read_csv(THIS_DIR / "player_metadata.csv")
         .set_index("uid")["username"]
         .to_dict()
     )
