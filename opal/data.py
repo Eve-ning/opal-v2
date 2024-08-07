@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import networkx as nx
 import pandas as pd
+import torch
 from lightning import LightningDataModule
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import (
     LabelEncoder,
     QuantileTransformer,
     minmax_scale,
+    MinMaxScaler,
 )
 from torch import tensor
 from torch.utils.data import TensorDataset, DataLoader
@@ -48,23 +50,33 @@ class OsuDataModule(LightningDataModule):
             n_quantiles=self.n_acc_quantiles,
             output_distribution="normal",
         )
+        self.mm_days_uid = {}
         self.df = None
 
     def prepare_data(self) -> None:
-        df = pd.read_csv(RSC_DIR / "score_dataset.csv")
+        df = pd.read_csv(RSC_DIR / "score_dataset_1000.csv")
         self.df = df[df["keys"] == self.n_keys]
 
     def setup(self, stage: str) -> None:
-        self.df["year"] = pd.to_datetime(
-            self.df["days_since_epoch"], unit="D"
-        ).dt.year
-        self.df = self.df.assign(
-            uid=lambda x: x["uid"].astype(str) + "/" + x["year"].astype(str),
-            mid=lambda x: x["mid"].astype(str) + "/" + x["speed"].astype(str),
-        )[["uid", "mid", "accuracy"]].assign(
-            uid=lambda x: self.le_uid.fit_transform(x["uid"]),
-            mid=lambda x: self.le_mid.fit_transform(x["mid"]),
+        self.df = (
+            self.df.assign(
+                mid=lambda x: x["mid"].astype(str)
+                + "/"
+                + x["speed"].astype(str),
+            )[["uid", "mid", "days_since_epoch", "accuracy"]]
+            .assign(
+                uid=lambda x: self.le_uid.fit_transform(x["uid"]),
+                mid=lambda x: self.le_mid.fit_transform(x["mid"]),
+            )
+            .astype({"days_since_epoch": float})
         )
+
+        for uid, uid_g in self.df.groupby("uid"):
+            self.df.loc[self.df["uid"] == uid, "t"] = (
+                mm := MinMaxScaler()
+            ).fit_transform(uid_g[["days_since_epoch"]].values)
+            self.mm_days_uid[uid] = mm
+        self.df = self.df.drop(columns=["days_since_epoch"])
 
         # Evaluate weight from PageRank
         # We construct our IDs as tuples because NetworkX treats all of them
@@ -105,11 +117,13 @@ class OsuDataModule(LightningDataModule):
         self.ds_train = TensorDataset(
             tensor(df_train["uid"].to_numpy()),
             tensor(df_train["mid"].to_numpy()),
+            tensor(df_train["t"].to_numpy()),
             tensor(df_train["accuracy"].to_numpy()).to(float),
         )
         self.ds_test = TensorDataset(
             tensor(df_test["uid"].to_numpy()),
             tensor(df_test["mid"].to_numpy()),
+            tensor(df_test["t"].to_numpy()),
             tensor(df_test["accuracy"].to_numpy()).to(float),
         )
 
@@ -138,3 +152,42 @@ class OsuDataModule(LightningDataModule):
         return DataLoader(
             self.ds_test, batch_size=self.batch_size, drop_last=True
         )
+
+
+#
+# # %%
+#
+#
+# dm = OsuDataModule(n_keys=4, n_acc_quantiles=10)
+# dm.prepare_data()
+# dm.setup("")
+#
+# for x_uid, x_mid, t, y_acc in dm.train_dataloader():
+#     x_uid: torch.Tensor
+#     x_mid: torch.Tensor
+#     t: torch.Tensor
+#     y_acc: torch.Tensor
+#     break
+# # %%
+#
+# from torch import nn
+# import torch
+# from math import comb
+#
+# n_curve_emb = 3
+#
+#
+# def bezier_component(x, i, n):
+#     return comb(n, i) * ((1 - x) ** (n - i)) * (x**i)
+#
+#
+# with torch.no_grad():
+#     uid_curve_emb = nn.Embedding(dm.n_uid, n_curve_emb)
+#     x_uid_curve_emb = uid_curve_emb(x_uid)
+#     n = n_curve_emb + 1
+#     x_t_curve = torch.stack(
+#         [bezier_component(t, i, n_curve_emb - 1) for i in range(n_curve_emb)]
+#     ).T
+#     x_uid_emb = (x_uid_curve_emb * x_t_curve).sum(dim=1)
+#
+# # %%

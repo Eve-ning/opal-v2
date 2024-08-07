@@ -12,8 +12,13 @@ from torch.nn.functional import softplus
 
 from opal.dict_transformer import DictionaryTransformer
 from opal.model.positive_linear import PositiveLinear
+from math import comb
 
-Batch: TypeAlias = tuple[Tensor, Tensor, Tensor]
+Batch: TypeAlias = tuple[Tensor, Tensor, Tensor, Tensor]
+
+
+def bezier_component(x, i, n):
+    return comb(n, i) * ((1 - x) ** (n - i)) * (x**i)
 
 
 class DeltaModel(pl.LightningModule):
@@ -25,8 +30,9 @@ class DeltaModel(pl.LightningModule):
         dt_uid_w: DictionaryTransformer,
         dt_mid_w: DictionaryTransformer,
         qt_acc: QuantileTransformer,
-        n_emb_mean: int = 2,
+        n_emb_mean: int = 1,
         n_emb_var: int = 1,
+        n_emb_curve: int = 20,
         n_delta_mean_neurons: int = 4,
         n_delta_var_neurons: int = 20,
         lr: float = 0.003,
@@ -55,12 +61,15 @@ class DeltaModel(pl.LightningModule):
         self.lr = lr
         self.l1_loss_weight = l1_loss_weight
         self.l2_loss_weight = l2_loss_weight
+        self.n_emb_curve = n_emb_curve
 
         n_uid = len(le_uid.classes_)
         n_mid = len(le_mid.classes_)
-
+        n_emb_time = 5
         # Embeddings for User and Beatmap IDs
-        self.emb_uid_mean = nn.Embedding(n_uid, n_emb_mean)
+        self.emb_uid_curve = nn.Embedding(n_uid, n_emb_curve)
+        self.emb_uid = nn.Embedding(n_uid, n_emb_time)
+
         self.emb_mid = nn.Embedding(n_mid, n_emb_mean)
         self.emb_uid_var = nn.Embedding(n_uid, n_emb_var)
 
@@ -86,9 +95,20 @@ class DeltaModel(pl.LightningModule):
 
         self.save_hyperparameters(logger=False)
 
-    def forward(self, x_uid, x_mid):
-        # Convert the One-Hot Encoded User ID and Beatmap ID to Embeddings
-        x_uid_mean = self.emb_uid_mean(x_uid)
+    def forward(self, x_uid, x_mid, t):
+        x_uid_curve_emb = self.emb_uid_curve(x_uid)
+        with torch.no_grad():
+            x_t_curve = (
+                torch.stack(
+                    [
+                        bezier_component(t, i, self.n_emb_curve - 1)
+                        for i in range(self.n_emb_curve)
+                    ]
+                )
+                .to(torch.float32)
+                .T
+            )
+            x_uid_mean = (x_uid_curve_emb * x_t_curve).sum(dim=1, keepdim=True)
         x_uid_var = self.emb_uid_var(x_uid)
 
         x_mid = self.emb_mid(x_mid)
@@ -122,11 +142,12 @@ class DeltaModel(pl.LightningModule):
             target: Target Value
             eps: Epsilon to prevent NaNs. Defaults to 1e-10.
         """
-        scale = torch.sqrt(var + eps) / 2
-        loss = (
-            torch.log(2 * scale) + torch.abs(target - mean) / scale
-        ) * weight
-        return loss.mean()
+        # scale = torch.sqrt(var + eps) / 2
+        # loss = (
+        #     torch.log(2 * scale) + torch.abs(target - mean) / scale
+        # ) * weight
+        # just use mse
+        return ((mean - target) ** 2 * weight).mean()
 
     def loss_decoded_rmse(
         self, mean: Tensor, var: Tensor, target: Tensor, weight: Tensor
@@ -140,8 +161,8 @@ class DeltaModel(pl.LightningModule):
         )
 
     def step(self, batch: Batch, loss_fn: Any):
-        x_uid, x_mid, y = batch
-        y_pred_mean, y_pred_var = self(x_uid, x_mid)
+        x_uid, x_mid, t, y = batch
+        y_pred_mean, y_pred_var = self(x_uid, x_mid, t)
         x_uid_w = tensor(self.dt_uid_w.transform(x_uid.tolist()))
         x_mid_w = tensor(self.dt_mid_w.transform(x_mid.tolist()))
         return loss_fn(y_pred_mean, y_pred_var, y, x_uid_w * x_mid_w)
@@ -193,7 +214,6 @@ class DeltaModel(pl.LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": one_cycle,
-                "interval": "step",
             },
         }
 

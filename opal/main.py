@@ -23,7 +23,6 @@ class Experiment:
     batch_size: int = 2**10
     p_test: float = 0
     n_acc_quantiles: int = 10000
-    n_emb: int = 1
     n_epochs: int = 25
     n_patience_early_stopping: int = 2
     l1_loss_weight: float = 0
@@ -50,7 +49,6 @@ class Experiment:
             dt_uid_w=self.datamodule.dt_uid_w,
             dt_mid_w=self.datamodule.dt_mid_w,
             qt_acc=self.datamodule.qt_acc,
-            n_emb_mean=self.n_emb,
             l1_loss_weight=self.l1_loss_weight,
             l2_loss_weight=self.l2_loss_weight,
         )
@@ -91,14 +89,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         n_keys=k,
         p_test=p_test,
-        n_emb=n_emb,
     )
 
     exp = exp_fn(7)
     exp.fit()
-
-    del exp
-    exp = exp_fn(4)
-    exp.fit()
-
-    del exp

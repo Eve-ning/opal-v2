@@ -19,11 +19,11 @@ from components.leaderboard import st_leaderboard
 from components.select import st_select_model, st_select_user, st_select_map
 
 st.set_page_config(
-    page_title="Opal: Delta Model",
+    page_title="Opal",
     page_icon="☄️",
     initial_sidebar_state="expanded",
 )
-st.title("Opal: Delta Model")
+st.title("Opal")
 
 THIS_DIR = Path(__file__).parent
 map_metadata = (
