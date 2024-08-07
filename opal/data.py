@@ -15,7 +15,6 @@ from torch import tensor
 from torch.utils.data import TensorDataset, DataLoader
 
 from opal.dict_transformer import DictionaryTransformer
-from opal.utils import RSC_DIR
 
 
 class OsuDataModule(LightningDataModule):
