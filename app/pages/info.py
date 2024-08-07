@@ -8,8 +8,11 @@ As a simple example, lets put 2 maps and a player on a line.
 **By placing any non-numerical object on a line, we call this operation
 an embedding.** 
 
-- The **further right** a map is, the **harder** it is, 
-- The **further right** a player is, the **better** they are.
+- The :orange[further right] a map is, the :orange[harder] it is, 
+- The :orange[further right] a player is, the :orange[better] they are.
+
+Let's place 2 maps :blue[M1, M2] and a player :red[P1] on a number line below.
+
 ```
 . ┌────┐  ┌────┐  ┌────┐
 ──┤ M1 ├──┤ M2 ├──┤ P1 ├──►
@@ -18,8 +21,11 @@ an embedding.**
  Lower Skill Higher Skill
 ```
 
-We assume that the distance between a map and player is related to accuracy
-in some manner.
+Let's assume that the distance between a map and player is related to accuracy
+in some manner. So, because the distance between :red[P1] and :blue[M1] is 
+larger than between :red[P1] and :blue[M2], the accuracy of :red[P1] on 
+:blue[M1] higher than on :blue[M2].
+
 ```
 . P1 - M1 = Higher Acc
    ◄──────────────────►
@@ -28,22 +34,24 @@ in some manner.
   └────┘  └────┘  └────┘
            ◄──────────►
         P1 - M2 = Lower Acc
-```
+```    
 
-> Larger distances indicates larger skill gap, therefore, higher accuracies.   
+However, because distance can't be :violet[transformed] directly as accuracy,
+we use a machine learning model to learn this :violet[transformation].
 
-However, the distance can't be interpreted directly as accuracy.
-Therefore, we train a model to learn the relationship between
-distance and accuracy, with the constraint that larger distances should yield
-larger accuracies.
+$$
+\text{model}(P - M) = \text{accuracy}
+$$
 
-As a result, we train a model that
-- learns the **best location** to place these maps and players
-- figures out **the relationship** between the distance and accuracy
+You can observe what relationship is learnt under the (Debug) Delta to Accuracy
+Transformation expander in the main page.
 
+There are many more details to this, which I've written in an ongoing blog post:
+[opal v2: Explainable Map and Player Embedding Optimation](https://eve-ning.github.io/2024/07/26/opal-emb.html)
+with details such as:
+- how I got the dataset
+- how I constraint the relationship to be monotonically positive
+- further works on opal
+- and general thoughts on the algorithm.
 """
-)
-st.info(
-    "This is continually being worked on, go to my blog for a more detailed explanation of the algorithm: "
-    "[opal v2: Explainable Map and Player Embedding Optimation](https://eve-ning.github.io/2024/07/26/opal-emb.html)"
 )

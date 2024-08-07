@@ -2,6 +2,7 @@ import re
 import sys
 from pathlib import Path
 
+from components.delta_to_acc import st_delta_to_acc
 
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
@@ -12,7 +13,6 @@ import streamlit as st
 
 from components.confidence import st_confidence
 from opal.model.delta_model import DeltaModel
-from opal.utils import RSC_DIR
 
 from components.bound_metrics import st_boundary_metrics
 from components.rating import st_map_rating, st_player_rating
@@ -182,5 +182,8 @@ st_map_rating(df_mid)
 st_player_rating(df_uid)
 st_map_leaderboard(df_map_pred)
 st_player_leaderboard(df_user_pred)
+
+with st.expander("(Debug) Delta to Accuracy Transformation"):
+    st_delta_to_acc(m)
 
 st.caption("Developed by [Evening](https://twitter.com/dev_evening).")
