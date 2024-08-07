@@ -1,3 +1,4 @@
+import base64
 import re
 import sys
 from pathlib import Path
@@ -20,12 +21,40 @@ from components.delta_to_acc import st_delta_to_acc
 from components.leaderboard import st_player_leaderboard, st_map_leaderboard
 from components.select import st_select_model, st_select_user, st_select_map
 
+from google.cloud import firestore
+import json
+
+fb_api_key = st.secrets["FB_KEY"]
+
 st.set_page_config(
     page_title="Opal",
     page_icon="☄️",
     initial_sidebar_state="expanded",
 )
-st.title("Opal")
+
+
+@st.cache_resource
+def get_db_pred_ref():
+    print("Initializing Firebase Reference")
+    key_b64_decoded = base64.b64decode(fb_api_key)
+    db = firestore.Client.from_service_account_info(
+        json.loads(key_b64_decoded)
+    )
+
+    return db.collection("predictions").document("predict")
+
+
+db_pred = get_db_pred_ref()
+count = db_pred.get().to_dict()["count"]
+db_pred.update({"count": count + 1})
+
+st.markdown(
+    f"""
+<h1 style='text-align: center;'><span style='filter: drop-shadow(0 0.2mm 1mm rgba(142, 190, 255, 0.9));'>Opal v2</span></h1>\n
+
+""",
+    unsafe_allow_html=True,
+)
 
 THIS_DIR = Path(__file__).parent
 
@@ -133,7 +162,6 @@ with st.sidebar:
     df_user_pred = m.predict_user(f"{uid}/{year}")
 
     acc_pred = df_map_pred.loc[uid, year]
-
     acc_mean, acc_lower, acc_upper = (
         acc_pred["mean"],
         acc_pred["lower_bound"],
@@ -146,6 +174,14 @@ with st.sidebar:
         "Opal doesn't require monetary support, but they do. "
         "If you do enjoy using their services, "
         "you can [support them](https://alphaosu.keytoix.vip/support)"
+    )
+    st.markdown(
+        f"""
+        <a href='https://twitter.com/dev_evening' style='text-decoration:none'>![Twitter](https://img.shields.io/badge/-dev__evening-blue?logo=x)</a>
+        <a href='https://github.com/Eve-ning/opal-v2' style='text-decoration:none'>![Repo](https://img.shields.io/badge/Repository-purple?logo=github)</a>
+        ![Predictions](https://img.shields.io/badge/Predictions-{db_pred.get().to_dict()['count']:,}-yellow?logo=firebase)
+        """,
+        unsafe_allow_html=True,
     )
     st.session_state.update(
         {
@@ -167,11 +203,8 @@ with st.sidebar:
         }
     )
 st.success(
-    ":wave: Thanks for using Opal! "
-    "This is still in early access, we're improving things as we go along, "
-    "and we appreciate feedback! "
-    "Let us (@dev_evening on Twitter) know how it can be better. "
-    "Note that Rainbow/MAX/Perfect is weighed 320/320"
+    ":wave: Thanks for checking out Opal! "
+    "Note that all judgements are weighed out of 320."
 )
 
 
