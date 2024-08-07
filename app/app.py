@@ -2,7 +2,6 @@ import re
 import sys
 from pathlib import Path
 
-from components.delta_to_acc import st_delta_to_acc
 
 PROJECT_DIR = Path(__file__).parents[1]
 sys.path.append(PROJECT_DIR.as_posix())
@@ -17,6 +16,7 @@ from opal.model.delta_model import DeltaModel
 from components.bound_metrics import st_boundary_metrics
 from components.rating import st_map_rating, st_player_rating
 
+from components.delta_to_acc import st_delta_to_acc
 from components.leaderboard import st_player_leaderboard, st_map_leaderboard
 from components.select import st_select_model, st_select_user, st_select_map
 
