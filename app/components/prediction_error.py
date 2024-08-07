@@ -1,4 +1,4 @@
-from pytorch_lightning import LightningModule
+from lightning import LightningModule
 import streamlit as st
 from opal.data import OsuDataModule
 from opal.evaluate.evaluate import prediction_error

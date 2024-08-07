@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import plotly.graph_objects as go
 import streamlit as st
 import torch
-from torch.nn.functional import softplus
 
 if TYPE_CHECKING:
     from opal.model.delta_model import DeltaModel
@@ -24,18 +23,14 @@ def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
 
     st.header("Delta to Accuracy Mapping")
     st.write(
-        """
-        The following plots shows the effect of the **Delta**, which is the 
-        $E_{u}- E_{m}$, on **Accuracy**. We predict 2 metrics, the mean and
-        variance of the accuracy, assuming that the accuracy is a Laplace
-        distribution.
+        r"""
+        The following plot show how the machine learning model transforms the
+        distance between the player embedding $P$ and the map embedding $M$ to
+        the player's accuracy.
         
-        The Laplace distribution is given by:
         $$
-        f(x | \\mu, s) = \\frac{1}{2s} \\exp\\left(-\\frac{|x - \\mu|}{s}\\right)
+        \text{{model}}(P - M) = \text{{accuracy}}
         $$
-        where $\\mu$ is the mean and $s$ is the scale parameter. The scale
-        parameter is related to the variance by $\\sigma^2 = 2s^2$.
         """
     )
     st.plotly_chart(
@@ -52,9 +47,8 @@ def st_delta_to_acc(m: "DeltaModel", xlim: tuple[float, float] = (-7, 7)):
             ],
             layout=go.Layout(
                 dict(
-                    xaxis_title="Delta",
-                    yaxis_title="Accuracy Mean",
-                    legend_title="Type",
+                    xaxis_title="P - M",
+                    yaxis_title="Accuracy",
                 )
             ),
         ),

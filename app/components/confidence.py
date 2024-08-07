@@ -21,20 +21,17 @@ def float_to_str_mapping(value):
     """
     for (low, high), label in mappings.items():
         if low <= value < high:
-            return f"{label} ({value:.2f})"
+            return f"{label}"
     return "Unknown"
 
 
-def st_confidence(user, map):
+def st_confidence():
+    upr, mpr = st.session_state["upr"], st.session_state["mpr"]
     st.subheader(
         "Prediction Confidence",
-        help="The prediction confidence measures how confident the model is. "
-        "It is determined by both the user's and map's confidence.",
+        help="This measures the trustworthiness of the predictions. ",
     )
 
-    userq = float(user["confidence_q"].iloc[0])
-    mapq = float(map["confidence_q"].iloc[0])
-
     left, right = st.columns(2)
-    right.metric("User", float_to_str_mapping(userq))
-    left.metric("Map", float_to_str_mapping(mapq))
+    right.metric("User", float_to_str_mapping(upr))
+    left.metric("Map", float_to_str_mapping(mpr))
