@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import networkx as nx
 import pandas as pd
 from lightning import LightningDataModule
@@ -20,6 +22,7 @@ class OsuDataModule(LightningDataModule):
     def __init__(
         self,
         n_keys: int,
+        dataset_path: str | Path,
         batch_size: int = 256,
         p_test: float | None = 0.2,
         n_acc_quantiles: int = 1000,
@@ -36,6 +39,7 @@ class OsuDataModule(LightningDataModule):
         """
         super().__init__()
         self.n_keys = n_keys
+        self.dataset_path = dataset_path
         self.batch_size = batch_size
         self.n_acc_quantiles = n_acc_quantiles
 
@@ -51,7 +55,7 @@ class OsuDataModule(LightningDataModule):
         self.df = None
 
     def prepare_data(self) -> None:
-        df = pd.read_csv(RSC_DIR / "score_dataset.csv")
+        df = pd.read_csv(self.dataset_path)
         self.df = df[df["keys"] == self.n_keys]
 
     def setup(self, stage: str) -> None:

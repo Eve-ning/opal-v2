@@ -22,10 +22,15 @@ DAN_MAPPING = {
 }
 
 
-def st_map_rating(df, md, maplabel, enable_dans: bool = False):
+def st_map_rating(df):
+    enable_dans = st.session_state["keys"] == 7
+    m_rating = st.session_state["m_rating"]
+    mapname = st.session_state["mapname"]
+    speed_str = st.session_state["speed_str"]
+
     with st.expander("Map Rating"):
         st.markdown(
-            "The red line shows the difficulty of the map, "
+            f"The red line shows the difficulty of :orange[{mapname} on {speed_str}], "
             "compared to all other maps"
         )
         dans_only = st.checkbox(
@@ -52,7 +57,7 @@ def st_map_rating(df, md, maplabel, enable_dans: bool = False):
 
             fig = px.scatter(
                 data_frame=df.rename({"pagerank_qt": "Confidence"}, axis=1),
-                x=df["0"],
+                x=df["rating"],
                 y=df["dantype"] + " " + df["speedtxt"],
                 hover_name=df["danname"] + " " + df["dantype"],
                 size=[1] * len(df),
@@ -65,7 +70,7 @@ def st_map_rating(df, md, maplabel, enable_dans: bool = False):
         else:
             fig = px.histogram(
                 data_frame=df,
-                x="0",
+                x="rating",
                 histnorm="probability",
             ).update_layout(
                 yaxis=dict(tickformat=".0%"),
@@ -83,38 +88,30 @@ def st_map_rating(df, md, maplabel, enable_dans: bool = False):
                     x=1,
                 ),
                 xaxis_title="Rating",
-            )
-            .add_vline(x=md, line_color="#F00")
-            .add_scatter(
-                x=[md], line_color="#F00", name=maplabel, visible="legendonly"
-            ),
+            ).add_vline(x=m_rating, line_color="#F00"),
             use_container_width=True,
         )
 
 
-def st_player_rating(df, ud, userlabel):
+def st_player_rating(df):
+    u_rating = st.session_state["u_rating"]
+    username = st.session_state["username"]
+    year = st.session_state["year"]
     with st.expander("Player Rating"):
         st.markdown(
-            "The red line shows the rating of the player, "
-            "compared to all other players"
+            f"The red line indicates the rating of :orange[{username} @ {year}], "
+            "compared to all players"
         )
         st.plotly_chart(
             go.Figure(
                 px.histogram(
-                    df,
-                    x="0",
-                    labels={"0": "Rating"},
+                    x=df["rating"],
                     histnorm="probability",
                 ),
             )
             .add_vline(
-                x=ud,
+                x=u_rating,
                 line_color="#F00",
-            )
-            .add_scatter(
-                x=[ud],
-                line_color="#F00",
-                name=userlabel,
             )
             .update_layout(
                 font=dict(size=16),
@@ -127,6 +124,20 @@ def st_player_rating(df, ud, userlabel):
                 ),
                 yaxis=dict(tickformat=".0%"),
                 yaxis_title="Frequency",
+            ),
+            use_container_width=True,
+        )
+        st.subheader("Rating History")
+        st.plotly_chart(
+            px.line(
+                df.loc[df["username"] == username, ["year", "rating"]]
+                .sort_values("year", ascending=False)
+                .reset_index(drop=True),
+                x="year",
+                y="rating",
+            ).add_vline(
+                x=year,
+                line_color="#F00",
             ),
             use_container_width=True,
         )

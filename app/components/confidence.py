@@ -25,12 +25,13 @@ def float_to_str_mapping(value):
     return "Unknown"
 
 
-def st_confidence(user, map):
+def st_confidence():
+    upr, mpr = st.session_state["upr"], st.session_state["mpr"]
     st.subheader(
         "Prediction Confidence",
         help="This measures the trustworthiness of the predictions. ",
     )
 
     left, right = st.columns(2)
-    right.metric("User", float_to_str_mapping(user))
-    left.metric("Map", float_to_str_mapping(map))
+    right.metric("User", float_to_str_mapping(upr))
+    left.metric("Map", float_to_str_mapping(mpr))

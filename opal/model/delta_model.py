@@ -25,7 +25,7 @@ class DeltaModel(pl.LightningModule):
         dt_uid_w: DictionaryTransformer,
         dt_mid_w: DictionaryTransformer,
         qt_acc: QuantileTransformer,
-        n_emb_mean: int = 2,
+        n_emb_mean: int = 1,
         n_emb_var: int = 1,
         n_delta_mean_neurons: int = 4,
         n_delta_var_neurons: int = 20,
@@ -40,6 +40,9 @@ class DeltaModel(pl.LightningModule):
             le_mid: Label Encoder for Beatmap IDs
             qt_acc: Quantile Transformer for Accuracy
             n_emb_mean: Number of Embedding Dimensions
+            n_emb_var: Number of Embedding Dimensions for User Variance
+            n_delta_mean_neurons: Number of Neurons for the Mean Prediction
+            n_delta_var_neurons: Number of Neurons for the Variance Prediction
             lr: Learning Rate
             l1_loss_weight: L1 Loss Weight
             l2_loss_weight: L2 Loss Weight
