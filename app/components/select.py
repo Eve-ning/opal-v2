@@ -11,12 +11,15 @@ from opal.model.delta_model import DeltaModel
 
 
 def st_select_user(username_opts: pd.Series, year_opts: pd.Series):
-    username = st.selectbox("User", username_opts.unique())
-    years = year_opts[username_opts == username].unique()
-    if len(years) == 1:
-        st.metric("Year", (year := years[0]))
-    else:
-        year = st.select_slider("Year", years)
+    left, right = st.columns(2)
+    with left:
+        username = st.selectbox("User", username_opts.unique())
+    with right:
+        years = year_opts[username_opts == username].unique()
+        if len(years) == 1:
+            st.metric("Year", (year := years[0]))
+        else:
+            year = st.selectbox("Year", years)
     return username, int(year)
 
 
@@ -39,8 +42,9 @@ def load_model(path: Path) -> DeltaModel:
 
 def st_select_model(model_search_pth: Path) -> tuple[DeltaModel, str]:
     model_path = st.selectbox(
-        "Model Path",
+        "Keys",
         options=list(p for p in model_search_pth.glob("**/*.ckpt")),
         placeholder="Select a model",
+        format_func=lambda p: p.stem,
     )
     return load_model(model_search_pth / model_path), Path(model_path).name

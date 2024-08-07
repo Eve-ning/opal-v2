@@ -7,12 +7,19 @@ def st_boundary_metrics():
         st.session_state["acc_lower"],
         st.session_state["acc_upper"],
     )
+    username, year, mapname, speed_str = (
+        st.session_state["username"],
+        st.session_state["year"],
+        st.session_state["mapname"],
+        st.session_state["speed_str"],
+    )
 
     st.markdown(
         "## Accuracy Prediction",
-        help="The bounds are the 75% confidence interval for the prediction. "
-        "Which means, if you played the map 100 times, "
-        "it's likely that 75 of those scores fall within the bounds.",
+        help=f"This means that if :orange[{username} @ {year}] plays "
+        f":orange[{mapname} @ {speed_str}] "
+        f":blue[100] times, :blue[75] of them are likely to fall between "
+        f":blue[{acc_lower:.2%}] and :blue[{acc_upper:.2%}].",
     )
     cols = st.columns(3)
     cols[0].metric(

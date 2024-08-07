@@ -29,7 +29,8 @@ def st_confidence():
     upr, mpr = st.session_state["upr"], st.session_state["mpr"]
     st.subheader(
         "Prediction Confidence",
-        help="This measures the trustworthiness of the predictions. ",
+        help="This measures the trustworthiness of the predictions. This is "
+        "based on manually determined thresholds.",
     )
 
     left, right = st.columns(2)

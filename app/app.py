@@ -25,7 +25,7 @@ st.set_page_config(
     page_icon="☄️",
     initial_sidebar_state="expanded",
 )
-st.title("Opal: Delta Model")
+st.title("Opal")
 
 THIS_DIR = Path(__file__).parent
 
@@ -56,7 +56,6 @@ with st.sidebar:
     m: DeltaModel
     # Extract all numerical values from the model_id as keys
     KEYS = int(re.findall(r"\d+", model_name)[0])
-    st.caption(f"Model ID: {model_name}, Keys: {KEYS}")
 
     df_uid = pd.DataFrame(
         m.emb_uid_mean.weight.detach(),
@@ -167,12 +166,12 @@ with st.sidebar:
             "acc_upper": acc_upper,
         }
     )
-
 st.success(
     ":wave: Thanks for using Opal! "
     "This is still in early access, we're improving things as we go along, "
     "and we appreciate feedback! "
-    "Let us (@dev_evening on Twitter) know how it can be better."
+    "Let us (@dev_evening on Twitter) know how it can be better. "
+    "Note that Rainbow/MAX/Perfect is weighed 320/320"
 )
 
 
@@ -186,4 +185,35 @@ st_player_leaderboard(df_user_pred)
 with st.expander("(Debug) Delta to Accuracy Transformation"):
     st_delta_to_acc(m)
 
+with st.expander("(Debug) Full Dataset"):
+    st.markdown(
+        """
+        We believe in transparency of data! 
+        As an exchange, we advice to interpret these results with caution. 
+        
+        For example, gimmick maps are rated highly, mainly because... 
+        gimmicks. Since there isn't a trivial, catch-all way to detect 
+        them, we left them in instead of 'blacklisting' them. 
+        
+        As a consequence, if a player, only plays gimmick maps (and does well)
+        they will get highly rated too!
+        
+        Another example, if a player is **way too good**, and are playing maps
+        with little to no data, the scores on those maps will not be weighed
+        highly.
+        """
+    )
+    st.dataframe(
+        df_mid[["mapname", "speed", "rating", "pagerank_qt"]]
+        .sort_values("rating", ascending=False)
+        .assign(speed=lambda x: x["speed"].map({-1: "HT", 0: "NT", 1: "DT"}))
+        .rename(columns={"pagerank_qt": "confidence"}),
+        use_container_width=True,
+    )
+    st.dataframe(
+        df_uid[["username", "year", "rating", "pagerank_qt"]]
+        .sort_values("rating", ascending=False)
+        .rename(columns={"pagerank_qt": "confidence"}),
+        use_container_width=True,
+    )
 st.caption("Developed by [Evening](https://twitter.com/dev_evening).")
