@@ -47,7 +47,7 @@ You can observe what relationship is learnt under the (Debug) Delta to Accuracy
 Transformation expander in the main page.
 
 There are many more details to this, which I've written in an ongoing blog post:
-[opal v2: Explainable Map and Player Embedding Optimation](https://eve-ning.github.io/2024/07/26/opal-emb.html)
+[opal v2: Explainable Map and Player Embedding Optimation](https://eve-ning.github.io/2024/07/26/opal-v2.html)
 with details such as:
 - how I got the dataset
 - how I constraint the relationship to be monotonically positive
