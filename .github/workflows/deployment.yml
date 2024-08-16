@@ -54,6 +54,7 @@ jobs:
       - name: Extract Dataset
         run: |
           tar -xjf ./${{ github.event.inputs.file_name }}.tar.bz2
+          rm ./${{ github.event.inputs.file_name }}.tar.bz2
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -89,7 +90,7 @@ jobs:
         uses: peter-evans/create-pull-request@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'Update Model Files'
+          commit-message: 'Update Model Files to ${{ github.event.inputs.file_name }}'
           title: 'Update Streamlit App ${{ github.event.inputs.file_name }}'
           body: 'Updates Streamlit App model files to ${{ github.event.inputs.file_name }}'
           branch: 'streamlit-staging'
