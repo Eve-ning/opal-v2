@@ -107,7 +107,7 @@ class OsuDataModule(LightningDataModule):
             )
         else:
             df_train = self.df[:]
-            df_test = self.df[0:0]
+            df_test = self.df[0 : self.batch_size]
             df_train["accuracy"] = self.qt_acc.fit_transform(
                 df_train[["accuracy"]].values
             )
