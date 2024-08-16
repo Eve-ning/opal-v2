@@ -93,17 +93,24 @@ class OsuDataModule(LightningDataModule):
         df_pr_mid[:] = minmax_scale(df_pr_mid)
         self.dt_mid_w.fit(df_pr_mid["w"])
 
-        df_train, df_test = train_test_split(
-            self.df, test_size=self.p_test, random_state=42
-        )
+        if self.p_test:
+            df_train, df_test = train_test_split(
+                self.df, test_size=self.p_test, random_state=42
+            )
 
-        # Fit the transform only on the training data to avoid data leakage
-        df_train["accuracy"] = self.qt_acc.fit_transform(
-            df_train[["accuracy"]].values
-        )
-        df_test["accuracy"] = self.qt_acc.transform(
-            df_test[["accuracy"]].values
-        )
+            # Fit the transform only on the training data to avoid data leakage
+            df_train["accuracy"] = self.qt_acc.fit_transform(
+                df_train[["accuracy"]].values
+            )
+            df_test["accuracy"] = self.qt_acc.transform(
+                df_test[["accuracy"]].values
+            )
+        else:
+            df_train = self.df[:]
+            df_test = self.df[0:0]
+            df_train["accuracy"] = self.qt_acc.fit_transform(
+                df_train[["accuracy"]].values
+            )
 
         self.ds_train = TensorDataset(
             tensor(df_train["uid"].to_numpy()),
