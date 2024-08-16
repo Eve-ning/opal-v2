@@ -55,6 +55,11 @@ jobs:
         run: |
           tar -xjf ./${{ github.event.inputs.file_name }}.tar.bz2
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
       - name: Install Poetry
         uses: snok/install-poetry@v1
 
