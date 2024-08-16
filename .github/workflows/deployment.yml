@@ -79,6 +79,11 @@ jobs:
           python -m opal -d ./score_dataset.csv -k 4 -o ./4k.ckpt
           python -m opal -d ./score_dataset.csv -k 7 -o ./7k.ckpt  
 
+      - name: Remove logs and Score Dataset
+        run: |
+          rm ./score_dataset.csv
+          rm -rf lightning_logs/
+
       - name: Copy Files
         run: |
           mv ./4k.ckpt ./app/4k.ckpt
