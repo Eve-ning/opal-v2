@@ -121,8 +121,9 @@ def entrypoint():
         "--p_test",
         "-p",
         type=float,
-        default=0.1,
-        help="Proportion of test data",
+        default=0,
+        help="Proportion of test data. Specify 0 to train on the entire "
+        "dataset",
     )
     args = parser.parse_args()
     dataset_path = Path.cwd() / args.dataset_path
