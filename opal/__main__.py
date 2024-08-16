@@ -3,22 +3,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import lightning as pl
-import torch
-from lightning.pytorch.callbacks import (
-    ModelCheckpoint,
-    EarlyStopping,
-    LearningRateMonitor,
-)
-
-from opal.data import OsuDataModule
-from opal.model.delta_model import DeltaModel
-from opal.utils import RSC_DIR
-
 
 def train(
     dataset_path: str | Path,
-    model_path: Path = RSC_DIR / "models",
+    model_path: Path,
     n_keys: int = 4,
     lr: float = 1e-3,
     batch_size: int = 2**10,
@@ -30,6 +18,19 @@ def train(
     l1_loss_weight: float = 0,
     l2_loss_weight: float = 0,
 ):
+    import lightning as pl
+    from lightning.pytorch.callbacks import (
+        ModelCheckpoint,
+        EarlyStopping,
+        LearningRateMonitor,
+    )
+
+    from opal.data import OsuDataModule
+    from opal.model.delta_model import DeltaModel
+    import torch
+
+    torch.set_float32_matmul_precision("medium")
+
     dm = OsuDataModule(
         n_keys=n_keys,
         dataset_path=dataset_path,
@@ -121,8 +122,9 @@ def entrypoint():
         "--p_test",
         "-p",
         type=float,
-        default=0.1,
-        help="Proportion of test data",
+        default=0,
+        help="Proportion of test data. Specify 0 to train on the entire "
+        "dataset",
     )
     args = parser.parse_args()
     dataset_path = Path.cwd() / args.dataset_path
@@ -141,5 +143,4 @@ def entrypoint():
 
 
 if __name__ == "__main__":
-    torch.set_float32_matmul_precision("medium")
     entrypoint()
