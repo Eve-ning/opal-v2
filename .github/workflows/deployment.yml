@@ -1,0 +1,86 @@
+# This workflow automates the deployment of our model to Streamlit
+# The way Streamlit Deployment works is that it detects any changes to the
+# GitHub Repo, then syncs their server with these new changes.
+
+# In particular, we need to update 2 important things
+# 1. The model files (4k.ckpt, 7k.ckpt, ...k.ckpt)
+# 2. The metadata files (map_metadata.csv, player_metadata.csv)
+# These files should be in /app/...
+
+# To achieve this, we have a few steps:
+
+# 1. Download the dataset from Eve-ning/osu-data, the format is:
+#    https://github.com/Eve-ning/osu-data/releases/download/2024_06_05_top_10000_mania/2024_06_05_top_10000_mania.tar.bz2
+
+# 2. Extract the .tar.bz2, `tar -xjf ./___.csv` which should contain
+#    a. score_dataset.csv    --> Used for Model Training
+#    b. player_metadata.csv  --> For Streamlit ID Decoding
+#    c. map_metadata.csv     --> For Streamlit ID Decoding
+#    Note that score_dataset.csv shouldn't be included in ./app
+
+# 3. Then, we invoke the training through python -m opal.main and point to our
+#    score_dataset.csv. This will create a Checkpoint artifact.
+#    python -m opal.main -f score_dataset.csv -k 4 -o 4k.ckpt
+#    python -m opal.main -f score_dataset.csv -k 7 -o 7k.ckpt
+
+# 4. Finally, we copy over
+#    a. 4k.ckpt, 7k.ckpt
+#    b. score_dataset.csv, map_metadata.csv
+
+
+name: Model Creation
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_name:
+        description: 'Dataset Version'
+        default: '2024_06_05_top_1000_mania'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Download Dataset
+        run: |
+          wget https://github.com/Eve-ning/osu-data/releases/download/${{ github.event.inputs.file_name }}/${{ github.event.inputs.file_name }}.tar.bz2
+
+      - name: Extract Dataset
+        run: |
+          tar -xjf ./${{ github.event.inputs.file_name }}.tar.bz2
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - name: Install Dependencies via Poetry
+        run: |
+          poetry install
+
+      - name: Train Model
+        run: |
+          python -m opal.main -d ./score_dataset.csv -k 4 -o ./4k.ckpt
+          python -m opal.main -d ./score_dataset.csv -k 7 -o ./7k.ckpt  
+
+      - name: Copy Files
+        run: |
+          mv ./4k.ckpt ./app/4k.ckpt
+          mv ./7k.ckpt ./app/7k.ckpt
+          mv ./map_metadata.csv ./app/map_metadata.csv
+          mv ./player_metadata.csv ./app/player_metadata.csv
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'Update Model Files'
+          title: 'Update Streamlit App ${{ github.event.inputs.file_name }}'
+          body: 'Updates Streamlit App model files to ${{ github.event.inputs.file_name }}'
+          branch: 'streamlit-staging'
+          base: 'master'
+          branch-suffix: 'timestamp'
